@@ -22,7 +22,21 @@ In the lookup form, enter the LinkedIn URL plus the person's name (optional) and
 
 A public phone number is conservatively labelled as a company number; WebOrigin does not infer that it is someone's direct mobile. A guessed `first.last@domain` candidate is optional, explicitly marked as a guess, and not mailbox-verified. No LinkedIn profile page is scraped.
 
-For broader searches, optionally run your own [SearXNG](https://github.com/searxng/searxng) instance and set `SEARXNG_BASE_URL=http://localhost:8080/`. WebOrigin queries its JSON search endpoint for the person's name/company and extracts contacts only from relevant result snippets. Configure your SearXNG `search.formats` to include `json`; the official [Search API documentation](https://docs.searxng.org/dev/search_api.html) notes that JSON format may be disabled on some instances. Search snippets have lower confidence than contacts extracted from an official company page and must be opened and checked. This uses SearXNG as a separate service; WebOrigin does not copy its AGPL code.
+For broader searches, optionally run the included local SearXNG setup (Docker required). From PowerShell, in the repository root:
+
+```powershell
+Copy-Item searxng/.env.example searxng/.env
+# Open searxng/.env and replace SEARXNG_SECRET with a strong random value.
+docker compose --env-file searxng/.env -f searxng/docker-compose.yml up -d
+```
+
+Then add this line to the **root** `.env.local` file (not the nested SearXNG env file) and restart Next.js:
+
+```dotenv
+SEARXNG_BASE_URL=http://localhost:8080/
+```
+
+The included `searxng/settings.yml` enables JSON results, which WebOrigin needs. The container's port is bound to `127.0.0.1` only. Stop it with `docker compose --env-file searxng/.env -f searxng/docker-compose.yml down`. See the [official Docker installation guide](https://docs.searxng.org/admin/installation-docker) for maintenance details. WebOrigin queries its JSON search endpoint for the person's name/company and extracts contacts only from relevant result snippets. Configure your SearXNG `search.formats` to include `json`; the official [Search API documentation](https://docs.searxng.org/dev/search_api.html) notes that JSON format may be disabled on some instances. Search snippets have lower confidence than contacts extracted from an official company page and must be opened and checked. This uses SearXNG as a separate service; WebOrigin does not copy its AGPL code.
 
 The crawl has request timeouts, a per-page size cap, same-host redirect handling, per-host pacing, and basic checks against private/local IP addresses. It is deliberately disabled in production until authentication, durable per-user quotas, and abuse controls are implemented.
 
