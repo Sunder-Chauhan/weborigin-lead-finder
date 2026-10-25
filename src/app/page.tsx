@@ -27,7 +27,8 @@ export default function Home() {
   const [showAdd,setShowAdd] = useState(false);
   const [form,setForm] = useState(emptyForm);
   const [profileUrl,setProfileUrl] = useState("");
-  const [lookupNotice,setLookupNotice] = useState("Contact discovery isn't connected yet. The interface is ready; no contact data is retrieved in demo mode.");
+  const [lookupNotice,setLookupNotice] = useState("Paste a LinkedIn profile URL. Contact discovery uses your configured server-side provider; none is called until you submit.");
+  const [lookupLoading,setLookupLoading] = useState(false);
   const [notice,setNotice] = useState("Demo mode: sample records are illustrative and saved locally in this browser.");
 
   useEffect(() => {
@@ -60,14 +61,53 @@ export default function Home() {
     setNotice("Lead saved locally. Contact enrichment has not been run.");
   }
 
-  function runLookup(event:FormEvent) {
+  async function runLookup(event:FormEvent) {
     event.preventDefault();
     const url = cleanUrl(profileUrl);
     if (!isLinkedInUrl(url)) { setLookupNotice("Enter a LinkedIn profile URL in the format linkedin.com/in/username."); return; }
-    const existing = leads.some(l => cleanUrl(l.linkedin).toLowerCase() === url.toLowerCase());
-    if (!existing) setLeads(p => [{...emptyForm,id:newId(),name:"Profile to research",linkedin:url,status:"New",source:"Lookup queue (not enriched)"} as Lead,...p]);
-    setLookupNotice("Profile saved to your lead list. No email or phone was retrieved: an authorized discovery provider or public-source connector must be configured first.");
-    setNotice(existing ? "Profile already exists in your lead list." : "Profile added to the lead list.");
+
+    let targetId = leads.find(l => cleanUrl(l.linkedin).toLowerCase() === url.toLowerCase())?.id;
+    if (!targetId) {
+      targetId = newId();
+      const newLead:Lead = { ...emptyForm, id:targetId, name:"Profile to research", linkedin:url, status:"New", source:"Lookup queued" };
+      setLeads(p => [newLead,...p]);
+      setNotice("Profile saved to the lead list.");
+    }
+
+    setLookupLoading(true);
+    setLookupNotice("Searching the configured contact provider. If a source has no match, we will report that rather than guess.");
+    try {
+      const response = await fetch("/api/lookup", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body:JSON.stringify({ linkedinUrl:url })
+      });
+      const result = await response.json() as {
+        status?: string; message?: string;
+        lead?: { fullName?:string; company?:string; title?:string; email?:string; phone?:string; emailSource?:string; phoneSource?:string };
+      };
+      if (!response.ok) {
+        setLookupNotice(result.message || "Contact lookup is unavailable. Check the provider setup.");
+        return;
+      }
+      const found = result.lead ?? {};
+      setLeads(prev => prev.map(l => cleanUrl(l.linkedin).toLowerCase() === url.toLowerCase() ? ({
+        ...l,
+        name:found.fullName || l.name,
+        company:found.company || l.company,
+        title:found.title || l.title,
+        email:found.email || l.email,
+        phone:found.phone || l.phone,
+        emailSource:found.emailSource || l.emailSource,
+        phoneSource:found.phoneSource || l.phoneSource,
+        source:(found.email || found.phone) ? "Tomba enrichment API" : l.source
+      }) : l));
+      setLookupNotice(result.message || "Lookup completed.");
+    } catch {
+      setLookupNotice("Could not reach the lookup service. Your profile remains saved, and no contact was fabricated.");
+    } finally {
+      setLookupLoading(false);
+    }
   }
 
   function importCsv(file:File) {
@@ -119,7 +159,7 @@ export default function Home() {
       </div>
       <form className="lookup-row" onSubmit={runLookup}>
         <input className="field" value={profileUrl} onChange={e=>setProfileUrl(e.target.value)} placeholder="https://www.linkedin.com/in/username/" aria-label="LinkedIn profile URL"/>
-        <button className="btn" type="submit"><Search size={16}/> Add profile</button>
+        <button className="btn" type="submit" disabled={lookupLoading}><Search size={16}/> {lookupLoading ? "Searching…" : "Find contacts"}</button>
       </form>
       <div className="notice warning"><CheckCircle2 size={17} style={{flex:"none",marginTop:1}}/><div>{lookupNotice}</div></div>
     </section>
