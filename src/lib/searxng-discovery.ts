@@ -37,6 +37,17 @@ function resultUrl(value: unknown): string | null {
   }
 }
 
+function matchesCompanySource(sourceUrl: string, companyDomain?: string): boolean {
+  if (!companyDomain) return false;
+  try {
+    const raw = companyDomain.trim().toLowerCase().replace(/^https?:\/\//, "").split(/[/:?#]/)[0].replace(/^www\./, "");
+    const host = new URL(sourceUrl).hostname.toLowerCase().replace(/^www\./, "");
+    return host === raw || host.endsWith(`.\${raw}`);
+  } catch {
+    return false;
+  }
+}
+
 function isCompanyEmail(email: string, companyDomain?: string): boolean {
   if (!companyDomain) return true;
   const domain = companyDomain.trim().toLowerCase().replace(/^https?:\/\//, "").split(/[/:?#]/)[0].replace(/^www\./, "");
@@ -116,6 +127,11 @@ export async function discoverSearchIndexedContacts(input: {
       const title = asString(result.title);
       const snippet = asString(result.content).slice(0, 1600);
       const evidenceText = `${title} ${snippet}`;
+      const searchableText = evidenceText.toLowerCase();
+      const relevant = matchesCompanySource(sourceUrl, companyDomain) ||
+        (fullName.length > 0 && searchableText.includes(fullName.toLowerCase())) ||
+        (companyName.length > 0 && searchableText.includes(companyName.toLowerCase()));
+      if (!relevant) continue;
       const emails = evidenceText.match(/[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9.-]+\.[a-z]{2,}/gi) ?? [];
       for (const rawEmail of emails) {
         const email = normalizeEmail(rawEmail);
