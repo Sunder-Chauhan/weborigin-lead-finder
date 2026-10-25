@@ -25,11 +25,14 @@ export type PublicDiscoveryResult = {
   domain: string;
 };
 
+type PublicPageResponse = { url: URL; status: number; text: string; contentType: string };
+
 const MAX_PAGE_BYTES = 900_000;
 const MAX_PAGES = 6;
 const CACHE_TTL_MS = 30 * 60 * 1000;
 const cache = new Map<string, { expiresAt: number; result: PublicDiscoveryResult }>();
 const lastRequestAt = new Map<string, number>();
+const pageCache = new Map<string, { expiresAt: number; resolvedUrl: string; status: number; text: string; contentType: string }>();
 
 const asText = (value: string) => value.replace(/\s+/g, " ").trim();
 
@@ -169,7 +172,29 @@ async function waitForHost(hostname: string): Promise<void> {
   lastRequestAt.set(hostname, Date.now());
 }
 
-async function safeFetchText(startUrl: URL): Promise<{ url: URL; status: number; text: string; contentType: string }> {
+async function safeFetchText(startUrl: URL): Promise<PublicPageResponse> {
+  const cacheKey = startUrl.href;
+  const cached = pageCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return { url: new URL(cached.resolvedUrl), status: cached.status, text: cached.text, contentType: cached.contentType };
+  }
+  if (cached) pageCache.delete(cacheKey);
+  const cacheAndReturn = (result: PublicPageResponse): PublicPageResponse => {
+    if (result.status === 200 || result.status === 404 || result.status === 410) {
+      pageCache.set(cacheKey, {
+        expiresAt: Date.now() + CACHE_TTL_MS,
+        resolvedUrl: result.url.href,
+        status: result.status,
+        text: result.text,
+        contentType: result.contentType,
+      });
+      if (pageCache.size > 2_000) {
+        const oldestKey = pageCache.keys().next().value;
+        if (oldestKey) pageCache.delete(oldestKey);
+      }
+    }
+    return result;
+  };
   let current = new URL(startUrl.href);
   for (let hop = 0; hop <= 3; hop++) {
     if (!["http:", "https:"].includes(current.protocol) || current.username || current.password) {
@@ -200,9 +225,9 @@ async function safeFetchText(startUrl: URL): Promise<{ url: URL; status: number;
     const contentType = response.headers.get("content-type") ?? "";
     const declaredLength = Number(response.headers.get("content-length") ?? "0");
     if (declaredLength > MAX_PAGE_BYTES) throw new Error("The webpage is larger than the allowed page-size limit.");
-    if (!response.ok) return { url: current, status: response.status, text: "", contentType };
+    if (!response.ok) return cacheAndReturn({ url: current, status: response.status, text: "", contentType });
     if (!/(text\/html|application\/xhtml\+xml|text\/plain)/i.test(contentType)) {
-      return { url: current, status: response.status, text: "", contentType };
+      return cacheAndReturn({ url: current, status: response.status, text: "", contentType });
     }
     if (!response.body) return { url: current, status: response.status, text: "", contentType };
     const reader = response.body.getReader();
@@ -225,7 +250,7 @@ async function safeFetchText(startUrl: URL): Promise<{ url: URL; status: number;
     const bytes = new Uint8Array(size);
     let offset = 0;
     for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
-    return { url: current, status: response.status, text: new TextDecoder().decode(bytes), contentType };
+    return cacheAndReturn({ url: current, status: response.status, text: new TextDecoder().decode(bytes), contentType });
   }
   throw new Error("Could not safely resolve the company website URL.");
 }
