@@ -118,8 +118,8 @@ export default function Home() {
         company:found.company || companyName || l.company,
         domain:companyDomain || l.domain,
         title:found.title || l.title,
-        email:found.email || l.email,
-        phone:found.phone || l.phone,
+        email:(l.email && !l.emailSource) ? l.email : (found.email || l.email),
+        phone:(l.phone && !l.phoneSource) ? l.phone : (found.phone || l.phone),
         emailSource:found.emailSource || l.emailSource,
         phoneSource:found.phoneSource || l.phoneSource,
         source:(found.email || found.phone) ? "Public-source / enrichment lookup" : l.source
@@ -179,8 +179,8 @@ export default function Home() {
             name:found.fullName || existing.name,
             company:found.company || existing.company,
             title:found.title || existing.title,
-            email:found.email || existing.email,
-            phone:found.phone || existing.phone,
+            email:(existing.email && !existing.emailSource) ? existing.email : (found.email || existing.email),
+            phone:(existing.phone && !existing.phoneSource) ? existing.phone : (found.phone || existing.phone),
             emailSource:found.emailSource || existing.emailSource,
             phoneSource:found.phoneSource || existing.phoneSource,
             source:(found.email || found.phone) ? "Public-source / enrichment lookup" : existing.source
