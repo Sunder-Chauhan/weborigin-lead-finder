@@ -36,6 +36,30 @@ function pickLeadContact(contacts: PublicContact[], type: "email" | "phone"): Pu
   )[0];
 }
 
+function deduplicateContacts(contacts: PublicContact[]): PublicContact[] {
+  const sourceRank = (contact: PublicContact): number => {
+    if (contact.label === "direct") return -1;
+    if (contact.sourceName.startsWith("Official company website")) return 0;
+    if (contact.verification === "provider_returned_unverified") return 1;
+    if (contact.sourceName.startsWith("SearXNG")) return 2;
+    if (contact.verification === "inferred_unverified") return 3;
+    return 2;
+  };
+  const unique = new Map<string, PublicContact>();
+  for (const contact of contacts) {
+    const normalized = contact.type === "email"
+      ? contact.value.toLowerCase()
+      : contact.value.replace(/\\D/g, "");
+    const key = `${contact.type}:${normalized}`;
+    const existing = unique.get(key);
+    if (!existing || sourceRank(contact) < sourceRank(existing) ||
+        (sourceRank(contact) === sourceRank(existing) && contact.confidence > existing.confidence)) {
+      unique.set(key, contact);
+    }
+  }
+  return [...unique.values()];
+}
+
 async function lookupTomba(linkedinUrl: string) {
   const apiKey = process.env.TOMBA_API_KEY;
   const apiSecret = process.env.TOMBA_API_SECRET;
@@ -188,10 +212,11 @@ export async function POST(request: Request) {
     }
   }
 
-  const email = pickLeadContact(contacts, "email");
-  const phone = pickLeadContact(contacts, "phone");
-  const hasPersonalDirectPhone = contacts.some((contact) => contact.type === "phone" && contact.label === "direct");
-  const status = email && hasPersonalDirectPhone ? "complete" : contacts.length ? "partial" : "not_found";
+  const finalContacts = deduplicateContacts(contacts);
+  const email = pickLeadContact(finalContacts, "email");
+  const phone = pickLeadContact(finalContacts, "phone");
+  const hasPersonalDirectPhone = finalContacts.some((contact) => contact.type === "phone" && contact.label === "direct");
+  const status = email && hasPersonalDirectPhone ? "complete" : finalContacts.length ? "partial" : "not_found";
   const message = status === "complete"
     ? "A published email and a person-specific phone source were found. Review the source evidence before outreach."
     : status === "partial"
@@ -211,7 +236,7 @@ export async function POST(request: Request) {
       emailSource: email ? `${email.sourceName} — ${email.sourceUrl}${email.verification === "inferred_unverified" ? " (GUESS; unverified)" : ""}` : "",
       phoneSource: phone ? `${phone.sourceName} — ${phone.sourceUrl}` : "",
     },
-    results: contacts,
+    results: finalContacts,
     pagesVisited,
     notes,
     usage: { publicPagesChecked: pagesVisited.length, paidFallbackEnabled: tombaEnabled },
