@@ -78,4 +78,3 @@ td .sub { color:var(--muted); font-size:12px; margin-top:5px; }
 .lookup-details a { color:var(--accent); }
 @media (max-width: 580px) { .evidence-panel { padding:11px; } .evidence-top { align-items:flex-start; flex-direction:column; gap:7px; } }
 
-.table-actions { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:8px; }
