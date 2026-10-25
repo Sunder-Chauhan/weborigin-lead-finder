@@ -31,7 +31,7 @@ const CACHE_TTL_MS = 30 * 60 * 1000;
 const cache = new Map<string, { expiresAt: number; result: PublicDiscoveryResult }>();
 const lastRequestAt = new Map<string, number>();
 
-const asText = (value: string) => value.replace(/\\s+/g, " ").trim();
+const asText = (value: string) => value.replace(/\s+/g, " ").trim();
 
 function ipv4IsNonPublic(address: string): boolean {
   const parts = address.split(".").map(Number);
@@ -117,25 +117,35 @@ function safePhone(value: string): string | null {
 }
 
 function isAllowedByRobots(robots: string, pathname: string): boolean {
-  const lines = robots.split(/\r?\n/).map((line) => line.replace(/#.*$/, "").trim());
-  let appliesToWildcard = false;
-  let inWildcardGroup = false;
-  const disallows: string[] = [];
-  for (const line of lines) {
+  const groups: Array<{ agents: string[]; disallows: string[] }> = [];
+  let group: { agents: string[]; disallows: string[] } = { agents: [], disallows: [] };
+  let hasDirective = false;
+  for (const rawLine of robots.split(/\r?\n/)) {
+    const line = rawLine.replace(/#.*$/, "").trim();
     const split = line.indexOf(":");
     if (split < 0) continue;
     const key = line.slice(0, split).trim().toLowerCase();
     const value = line.slice(split + 1).trim();
     if (key === "user-agent") {
-      inWildcardGroup = value === "*";
-      appliesToWildcard = appliesToWildcard || inWildcardGroup;
-    } else if (key === "disallow" && inWildcardGroup && value) {
-      disallows.push(value);
+      if (hasDirective || (group.agents.length && group.disallows.length)) {
+        groups.push(group);
+        group = { agents: [], disallows: [] };
+        hasDirective = false;
+      }
+      group.agents.push(value.toLowerCase());
+    } else if (key === "disallow" && value) {
+      group.disallows.push(value);
+      hasDirective = true;
+    } else if (key === "allow") {
+      hasDirective = true;
     }
   }
-  return !appliesToWildcard || !disallows.some((path) => pathname.startsWith(path));
+  if (group.agents.length) groups.push(group);
+  const exact = groups.filter((entry) => entry.agents.some((agent) => agent === "weboriginleadfinder"));
+  const applicable = exact.length ? exact : groups.filter((entry) => entry.agents.includes("*"));
+  const disallows = applicable.flatMap((entry) => entry.disallows);
+  return !disallows.some((blockedPath) => pathname.startsWith(blockedPath));
 }
-
 async function waitForHost(hostname: string): Promise<void> {
   const now = Date.now();
   const previous = lastRequestAt.get(hostname) ?? 0;
@@ -208,12 +218,6 @@ async function safeFetchText(startUrl: URL): Promise<{ url: URL; status: number;
 function candidatePages(home: URL, html: string): URL[] {
   const candidates: URL[] = [new URL("/", home)];
   const seen = new Set<string>([candidates[0].href]);
-  const priorityPath = ["/contact", "/about", "/team", "/leadership", "/people", "/our-team", "/about-us"];
-  for (const path of priorityPath) {
-    const url = new URL(path, home);
-    if (!seen.has(url.href)) { seen.add(url.href); candidates.push(url); }
-  }
-
   const links = [...html.matchAll(/<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a\s*>/gi)];
   const selected = links.map((match) => {
     const href = decodeEntities(match[1]).trim();
@@ -230,6 +234,11 @@ function candidatePages(home: URL, html: string): URL[] {
       if (url.search) continue;
       if (!seen.has(url.href)) { seen.add(url.href); candidates.push(url); }
     } catch { /* Ignore malformed webpage links. */ }
+  }
+  // Try conventional paths only after actual navigation links.
+  for (const path of ["/contact", "/about", "/team", "/leadership", "/people", "/our-team", "/about-us"]) {
+    const url = new URL(path, home);
+    if (!seen.has(url.href)) { seen.add(url.href); candidates.push(url); }
   }
   return candidates.slice(0, MAX_PAGES);
 }
