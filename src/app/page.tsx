@@ -9,6 +9,10 @@ type Lead = {
   email: string; phone: string; linkedin: string; status: "New" | "Contacted" | "Interested" | "Converted";
   source: string; emailSource?: string; phoneSource?: string;
 };
+type LookupResult = {
+  type: "email" | "phone"; value: string; label: string; sourceName: string; sourceUrl: string;
+  verification: string; confidence?: number; evidence?: string;
+};
 const DEMO: Lead[] = [
   { id:"demo-1", name:"Aarav Mehta", title:"Marketing Director", company:"Northstar Events", industry:"Events", city:"Delhi", email:"", phone:"", linkedin:"", status:"New", source:"Illustrative demo" },
   { id:"demo-2", name:"Priya Kapoor", title:"People Operations Lead", company:"Brightlane Tech", industry:"Technology", city:"Gurugram", email:"", phone:"", linkedin:"", status:"Contacted", source:"Illustrative demo" },
@@ -27,7 +31,14 @@ export default function Home() {
   const [showAdd,setShowAdd] = useState(false);
   const [form,setForm] = useState(emptyForm);
   const [profileUrl,setProfileUrl] = useState("");
-  const [lookupNotice,setLookupNotice] = useState("Paste a LinkedIn profile URL. Contact discovery uses your configured server-side provider; none is called until you submit.");
+  const [fullName,setFullName] = useState("");
+  const [companyName,setCompanyName] = useState("");
+  const [companyDomain,setCompanyDomain] = useState("");
+  const [includeEmailGuess,setIncludeEmailGuess] = useState(false);
+  const [lookupResults,setLookupResults] = useState<LookupResult[]>([]);
+  const [lookupNotes,setLookupNotes] = useState<string[]>([]);
+  const [pagesVisited,setPagesVisited] = useState<string[]>([]);
+  const [lookupNotice,setLookupNotice] = useState("Enter a LinkedIn profile URL and, for free public-source discovery, the person's name and official company website/domain.");
   const [lookupLoading,setLookupLoading] = useState(false);
   const [notice,setNotice] = useState("Demo mode: sample records are illustrative and saved locally in this browser.");
 
@@ -75,32 +86,39 @@ export default function Home() {
     }
 
     setLookupLoading(true);
-    setLookupNotice("Searching the configured contact provider. If a source has no match, we will report that rather than guess.");
+    setLookupResults([]);
+    setLookupNotes([]);
+    setPagesVisited([]);
+    setLookupNotice("Checking permitted public company pages first. A company phone number will not be labelled as a direct mobile.");
     try {
       const response = await fetch("/api/lookup", {
         method:"POST",
         headers:{ "Content-Type":"application/json" },
-        body:JSON.stringify({ linkedinUrl:url })
+        body:JSON.stringify({ linkedinUrl:url, fullName, company:companyName, companyDomain, includeEmailGuess })
       });
       const result = await response.json() as {
         status?: string; message?: string;
         lead?: { fullName?:string; company?:string; title?:string; email?:string; phone?:string; emailSource?:string; phoneSource?:string };
+        results?: LookupResult[]; notes?: string[]; pagesVisited?: string[];
       };
       if (!response.ok) {
         setLookupNotice(result.message || "Contact lookup is unavailable. Check the provider setup.");
         return;
       }
       const found = result.lead ?? {};
+      setLookupResults(result.results ?? []);
+      setLookupNotes(result.notes ?? []);
+      setPagesVisited(result.pagesVisited ?? []);
       setLeads(prev => prev.map(l => cleanUrl(l.linkedin).toLowerCase() === url.toLowerCase() ? ({
         ...l,
-        name:found.fullName || l.name,
-        company:found.company || l.company,
+        name:found.fullName || fullName || l.name,
+        company:found.company || companyName || l.company,
         title:found.title || l.title,
         email:found.email || l.email,
         phone:found.phone || l.phone,
         emailSource:found.emailSource || l.emailSource,
         phoneSource:found.phoneSource || l.phoneSource,
-        source:(found.email || found.phone) ? "Tomba enrichment API" : l.source
+        source:(found.email || found.phone) ? "Public-source / enrichment lookup" : l.source
       }) : l));
       setLookupNotice(result.message || "Lookup completed.");
     } catch {
@@ -154,14 +172,37 @@ export default function Home() {
 
     <section className="card lookup">
       <div style={{display:"flex",justifyContent:"space-between",gap:14,alignItems:"flex-start",flexWrap:"wrap"}}>
-        <div><div className="pill"><ShieldCheck size={14}/> Free-source-first design</div><h1 style={{fontSize:"clamp(24px,4vw,36px)",letterSpacing:"-1.1px",margin:"15px 0 7px"}}>Find and organize professional contacts.</h1><p className="section-subtitle" style={{maxWidth:760}}>Start with a LinkedIn profile URL, manage leads, and keep every email or phone tied to its source. The current build manages profiles; enrichment must be connected separately.</p></div>
+        <div><div className="pill"><ShieldCheck size={14}/> Free public-source discovery</div><h1 style={{fontSize:"clamp(24px,4vw,36px)",letterSpacing:"-1.1px",margin:"15px 0 7px"}}>Find and organize professional contacts.</h1><p className="section-subtitle" style={{maxWidth:760}}>Search an official company website for publicly listed professional contacts. Every result includes a source and evidence level; public company numbers are not assumed to be direct mobiles.</p></div>
         <WandSparkles size={28} color="var(--accent)"/>
       </div>
-      <form className="lookup-row" onSubmit={runLookup}>
-        <input className="field" value={profileUrl} onChange={e=>setProfileUrl(e.target.value)} placeholder="https://www.linkedin.com/in/username/" aria-label="LinkedIn profile URL"/>
-        <button className="btn" type="submit" disabled={lookupLoading}><Search size={16}/> {lookupLoading ? "Searching…" : "Find contacts"}</button>
+      <form onSubmit={runLookup}>
+        <div className="lookup-row">
+          <input className="field" value={profileUrl} onChange={e=>setProfileUrl(e.target.value)} placeholder="https://www.linkedin.com/in/username/" aria-label="LinkedIn profile URL"/>
+          <button className="btn" type="submit" disabled={lookupLoading}><Search size={16}/> {lookupLoading ? "Searching…" : "Find contacts"}</button>
+        </div>
+        <div className="grid-form lookup-inputs">
+          <input className="field" value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="Person's full name (helps match)" aria-label="Person full name"/>
+          <input className="field" value={companyName} onChange={e=>setCompanyName(e.target.value)} placeholder="Company name (optional)" aria-label="Company name"/>
+          <input className="field" value={companyDomain} onChange={e=>setCompanyDomain(e.target.value)} placeholder="Official company domain (example.com)" aria-label="Company domain"/>
+        </div>
+        <label className="guess-toggle"><input type="checkbox" checked={includeEmailGuess} onChange={e=>setIncludeEmailGuess(e.target.checked}/> Also include one guessed first.last@domain email when no published email is found (unverified).</label>
       </form>
       <div className="notice warning"><CheckCircle2 size={17} style={{flex:"none",marginTop:1}}/><div>{lookupNotice}</div></div>
+      {lookupResults.length > 0 && <section className="evidence-panel">
+        <div className="section-title">Contact evidence</div>
+        <p className="section-subtitle">Use the source link to review the original page. “Published” does not mean mailbox or phone-line verification.</p>
+        <div className="evidence-list">{lookupResults.map((item,index)=><article className="evidence-row" key={item.type + item.value + item.sourceUrl + index}>
+          <div className="evidence-top"><strong>{item.type === "email" ? <Mail size={14}/> : <Phone size={14}/>} {item.value}</strong><span className="evidence-tag">{item.verification.replaceAll("_"," ")}</span></div>
+          <div className="sub">{item.sourceName} · {item.label.replaceAll("_"," ")} · confidence {Math.round((item.confidence ?? 0)*100)}%</div>
+          {item.sourceUrl && <a href={item.sourceUrl} target="_blank" rel="noreferrer" className="evidence-link">{item.sourceUrl}</a>}
+          {item.evidence && <p className="evidence-text">{item.evidence}</p>}
+        </article>)}</div>
+      </section>}
+      {(lookupNotes.length > 0 || pagesVisited.length > 0) && <details className="lookup-details">
+        <summary>Lookup notes ({pagesVisited.length} pages checked)</summary>
+        {pagesVisited.length > 0 && <p className="section-subtitle">Pages checked: {pagesVisited.map((page,index)=><span key={page}>{index ? ", " : ""}<a href={page} target="_blank" rel="noreferrer">{new URL(page).pathname || "/"}</a></span>)}</p>}
+        {lookupNotes.map((note,index)=><p className="section-subtitle" key={index}>{note}</p>)}
+      </details>}
     </section>
 
     <section className="stats">{stats.map(({label,value,Icon})=><div className="stat" key={label}><div className="stat-icon"><Icon size={20}/></div><div><div className="stat-label">{label}</div><div className="stat-value">{value}</div></div></div>)}</section>
@@ -190,6 +231,6 @@ export default function Home() {
       <div className="notice"><CheckCircle2 size={17} style={{flex:"none",marginTop:1}}/><div>{notice}</div></div>
     </section>
 
-    <footer className="footer">MVP status: lead management and CSV workflows are implemented; contact enrichment and Supabase persistence are not connected yet. This build does not scrape restricted LinkedIn data, bypass provider quotas, or invent contact details. Browser-local data is not shared across devices—export CSV backups before clearing browser storage.</footer>
+    <footer className="footer">Free-source MVP: public company pages are checked for published contacts, results are cached in memory, and source evidence is displayed. Email-pattern guesses are explicitly marked unverified. Personal mobile coverage cannot be guaranteed from public sources. Production lookups remain disabled until authentication, durable quotas, and abuse controls are added. Browser-local data is not shared across devices—export CSV backups before clearing browser storage.</footer>
   </main>;
 }
