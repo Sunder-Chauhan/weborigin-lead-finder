@@ -49,7 +49,7 @@ function deduplicateContacts(contacts: PublicContact[]): PublicContact[] {
   for (const contact of contacts) {
     const normalized = contact.type === "email"
       ? contact.value.toLowerCase()
-      : contact.value.replace(/\\D/g, "");
+      : contact.value.split("").filter((character) => character >= "0" && character <= "9").join("");
     const key = `${contact.type}:${normalized}`;
     const existing = unique.get(key);
     if (!existing || sourceRank(contact) < sourceRank(existing) ||
