@@ -10,7 +10,22 @@ Free-tier-first lead management and professional contact discovery for legitimat
 - CSV import/export
 - Email and phone fields with provider/source attribution
 - Supabase schema with row-level security for the next persistence/auth stage
-- Optional Tomba integration for LinkedIn profile email + mobile enrichment
+- Free-first public company website discovery for published professional emails and public phone numbers
+- Source URL, evidence excerpt, confidence and contact evidence type displayed for each discovery
+- In-memory 30-minute result cache, robots.txt handling, per-host pacing, page-size/time limits and basic SSRF/private-address safeguards
+- Optional Tomba fallback gated by an explicit environment flag
+
+## Free public-source lookup
+
+In the lookup form, enter the LinkedIn URL plus the person's name (optional) and the company's official domain (for example, `example.com`). The free adapter checks the public homepage and a small set of contact/about/team/leadership pages, subject to `robots.txt`. It extracts company-domain emails and publicly listed phones, returns source links and evidence snippets, and caches results in memory for 30 minutes.
+
+A public phone number is conservatively labelled as a company number; WebOrigin does not infer that it is someone's direct mobile. A guessed `first.last@domain` candidate is optional, explicitly marked as a guess, and not mailbox-verified. No LinkedIn profile page is scraped.
+
+The crawl has request timeouts, a per-page size cap, same-host redirect handling, per-host pacing, and basic checks against private/local IP addresses. It is deliberately disabled in production until authentication, durable per-user quotas, and abuse controls are implemented.
+
+### Optional provider fallback
+
+Tomba is disabled by default, even if credentials are present. To opt into it for local testing, set `ENABLE_TOMBA_FALLBACK=true` in `.env.local` and configure the Tomba key/secret below. Phone enrichment may consume credits. Never expose keys in browser code.
 
 ## Run locally (Windows PowerShell)
 
@@ -50,6 +65,10 @@ The code keeps the provider credentials server-side. Never place `TOMBA_API_KEY`
 
 GitHub Actions runs ESLint and a Next.js production build on pushes and pull requests to `main`.
 
+## Open-source references and implementation notes
+
+WebOrigin uses a native implementation of common public-source discovery patterns and does not copy application source from AGPL projects into this repository. Research references include [OpenLeads](https://github.com/Samyrrrrrr990/openleads) (public-source discovery and evidence tiers), [OpenEnrich](https://github.com/openenrich/openenrich) (local email finding/verification concepts), [LeadForge](https://github.com/AbdulrahmanAmer/leadforge) (public business website crawling; MIT license), and [OpenProspector](https://github.com/clawnify/OpenProspector) (cache-first provider waterfalls). Their licenses and terms should be reviewed before directly incorporating any source code.
+
 ## Open-source enrichment research
 
 See [OPEN_SOURCE_ENRICHMENT_RESEARCH.md](./OPEN_SOURCE_ENRICHMENT_RESEARCH.md) for a review of open-source candidates, license considerations, and the recommended free-first architecture. The key limitation is that free public sources can discover published email and company contact numbers, but cannot guarantee a person's hidden direct mobile from a LinkedIn URL.
@@ -58,7 +77,7 @@ See [OPEN_SOURCE_ENRICHMENT_RESEARCH.md](./OPEN_SOURCE_ENRICHMENT_RESEARCH.md) f
 
 1. Supabase Auth login and user-isolated lead persistence.
 2. Server-side usage tracking, rate limits, caching and monthly free quotas.
-3. Free public company-source email discovery and source attribution.
+3. Durable shared caching, retries/backoff and test coverage for public-source discovery.
 4. Optional authorized phone-enrichment adapters behind the same interface.
 5. Billing and paid plans only after lookup accuracy and operating costs are measured.
 
