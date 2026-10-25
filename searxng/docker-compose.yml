@@ -1,0 +1,32 @@
+# Local-only SearXNG search sidecar for WebOrigin Lead Finder.
+# This service is bound to 127.0.0.1 and is not exposed to your LAN/public internet.
+name: weborigin-searxng
+
+services:
+  core:
+    container_name: weborigin-searxng
+    image: docker.io/searxng/searxng:${SEARXNG_VERSION:-latest}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${SEARXNG_PORT:-8080}:8080"
+    environment:
+      SEARXNG_BASE_URL: http://localhost:${SEARXNG_PORT:-8080}/
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?Set SEARXNG_SECRET in searxng/.env before starting}
+      SEARXNG_VALKEY_URL: valkey://valkey:6379/0
+    volumes:
+      - ./settings.yml:/etc/searxng/settings.yml:rw
+      - searxng-cache:/var/cache/searxng/
+    depends_on:
+      - valkey
+
+  valkey:
+    container_name: weborigin-searxng-valkey
+    image: docker.io/valkey/valkey:9-alpine
+    restart: unless-stopped
+    command: valkey-server --save 300 1 --save 60 1000 --loglevel warning
+    volumes:
+      - valkey-data:/data/
+
+volumes:
+  searxng-cache:
+  valkey-data:
