@@ -74,13 +74,13 @@ async function lookupTomba(linkedinUrl: string) {
   if (email) results.push({
     type: "email", value: email, label: "professional", sourceName: "Tomba enrichment API",
     sourceUrl: sourceUrl || "https://tomba.io/",
-    verification: verification === "valid" ? "published_unverified" : "published_unverified",
+    verification: "provider_returned_unverified",
     confidence: score ?? 0.65,
     evidence: "Returned by the configured contact-enrichment provider; not independently verified by WebOrigin.",
   });
   for (const phone of phones) results.push({
     type: "phone", value: phone, label: "other", sourceName: "Tomba enrichment API (line type unverified)",
-    sourceUrl: "https://tomba.io/", verification: "published_unverified",
+    sourceUrl: "https://tomba.io/", verification: "provider_returned_unverified",
     confidence: score ?? 0.6,
     evidence: "Returned by the configured contact-enrichment provider; WebOrigin has not independently confirmed that this is a direct mobile.",
   });
