@@ -63,9 +63,6 @@ async function lookupTomba(linkedinUrl: string) {
       return "";
     }),
   ].filter(Boolean)));
-  const verification = data.verification && typeof data.verification === "object"
-    ? asString((data.verification as JsonObject).status).toLowerCase()
-    : "unknown";
   const score = typeof data.score === "number" ? Math.max(0, Math.min(1, data.score / 100)) : undefined;
   const sources = Array.isArray(data.sources) ? data.sources : [];
   const sourceUrl = sources.map((entry: unknown) =>
@@ -125,6 +122,7 @@ export async function POST(request: Request) {
   const notes: string[] = [];
   let resolvedFullName = fullName;
   let resolvedCompany = company;
+  let resolvedTitle = "";
 
   if (companyDomain) {
     try {
@@ -149,6 +147,7 @@ export async function POST(request: Request) {
       if (provider) {
         resolvedFullName ||= provider.fullName;
         resolvedCompany ||= provider.company;
+        resolvedTitle ||= provider.title;
         const freeTypes = new Set(contacts.map((c) => c.type));
         contacts.push(...provider.results.filter((c) => !freeTypes.has(c.type)));
         notes.push("Optional Tomba fallback was enabled. Provider-returned phones are not assumed to be direct mobiles.");
@@ -178,7 +177,7 @@ export async function POST(request: Request) {
     lead: {
       fullName: resolvedFullName,
       company: resolvedCompany,
-      title: "",
+      title: resolvedTitle,
       linkedinUrl,
       email: email?.value ?? "",
       phone: phone?.value ?? "",
