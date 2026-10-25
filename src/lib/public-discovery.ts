@@ -7,7 +7,7 @@ export type PublicContact = {
   label: "professional" | "direct" | "company_main" | "other";
   sourceName: string;
   sourceUrl: string;
-  verification: "published_unverified" | "inferred_unverified";
+  verification: "published_unverified" | "inferred_unverified" | "provider_returned_unverified";
   confidence: number;
   evidence: string;
 };
