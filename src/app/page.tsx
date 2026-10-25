@@ -7,7 +7,7 @@ import { Building2, CheckCircle2, Download, Filter, Linkedin, Mail, Phone, Plus,
 type Lead = {
   id: string; name: string; title: string; company: string; industry: string; city: string;
   email: string; phone: string; linkedin: string; status: "New" | "Contacted" | "Interested" | "Converted";
-  source: string; emailSource?: string; phoneSource?: string;
+  source: string; emailSource?: string; phoneSource?: string; domain?: string;
 };
 type LookupResult = {
   type: "email" | "phone"; value: string; label: string; sourceName: string; sourceUrl: string;
@@ -18,7 +18,7 @@ const DEMO: Lead[] = [
   { id:"demo-2", name:"Priya Kapoor", title:"People Operations Lead", company:"Brightlane Tech", industry:"Technology", city:"Gurugram", email:"", phone:"", linkedin:"", status:"Contacted", source:"Illustrative demo" },
   { id:"demo-3", name:"Kabir Singh", title:"Founder", company:"Studio Meridian", industry:"Design", city:"Mumbai", email:"", phone:"", linkedin:"", status:"Interested", source:"Illustrative demo" }
 ];
-const emptyForm = { name:"", title:"", company:"", industry:"", city:"", linkedin:"", email:"", phone:"" };
+const emptyForm = { name:"", title:"", company:"", domain:"", industry:"", city:"", linkedin:"", email:"", phone:"" };
 const newId = () => typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2);
 const cleanUrl = (value:string) => value.trim().replace(/\/$/, "");
 const isLinkedInUrl = (value:string) => /^https?:\/\/(www\.)?linkedin\.com\/(in|pub)\/[a-z0-9_%.-]+\/?$/i.test(value.trim());
@@ -40,6 +40,8 @@ export default function Home() {
   const [pagesVisited,setPagesVisited] = useState<string[]>([]);
   const [lookupNotice,setLookupNotice] = useState("Enter a LinkedIn profile URL and, for free public-source discovery, the person's name and official company website/domain.");
   const [lookupLoading,setLookupLoading] = useState(false);
+  const [bulkLoading,setBulkLoading] = useState(false);
+  const [bulkProgress,setBulkProgress] = useState("");
   const [notice,setNotice] = useState("Demo mode: sample records are illustrative and saved locally in this browser.");
 
   useEffect(() => {
@@ -57,9 +59,10 @@ export default function Home() {
   }, [leads, loaded]);
 
   const filtered = useMemo(() => leads.filter(l => {
-    const h = [l.name,l.title,l.company,l.industry,l.city,l.email,l.phone,l.linkedin].join(" ").toLowerCase();
+    const h = [l.name,l.title,l.company,l.domain,l.industry,l.city,l.email,l.phone,l.linkedin].join(" ").toLowerCase();
     return h.includes(query.toLowerCase()) && (status === "All statuses" || l.status === status);
   }), [leads,query,status]);
+  const enrichableLeads = useMemo(() => leads.filter(l => !!l.linkedin && !!l.domain?.trim()), [leads]);
 
   function saveLead(event?:FormEvent) {
     event?.preventDefault();
@@ -80,7 +83,7 @@ export default function Home() {
     let targetId = leads.find(l => cleanUrl(l.linkedin).toLowerCase() === url.toLowerCase())?.id;
     if (!targetId) {
       targetId = newId();
-      const newLead:Lead = { ...emptyForm, id:targetId, name:fullName || "Profile to research", company:companyName, linkedin:url, status:"New", source:"Lookup queued" };
+      const newLead:Lead = { ...emptyForm, id:targetId, name:fullName || "Profile to research", company:companyName, domain:companyDomain, linkedin:url, status:"New", source:"Lookup queued" };
       setLeads(p => [newLead,...p]);
       setNotice("Profile saved to the lead list.");
     }
@@ -113,6 +116,7 @@ export default function Home() {
         ...l,
         name:found.fullName || fullName || l.name,
         company:found.company || companyName || l.company,
+        domain:companyDomain || l.domain,
         title:found.title || l.title,
         email:found.email || l.email,
         phone:found.phone || l.phone,
@@ -128,6 +132,68 @@ export default function Home() {
     }
   }
 
+  async function enrichSavedLeads() {
+    if (bulkLoading) return;
+    const targets = enrichableLeads;
+    if (!targets.length) {
+      setNotice("No eligible rows. Import a CSV containing LinkedIn URL and company domain columns, or add those values to leads first.");
+      return;
+    }
+    setBulkLoading(true);
+    let withContacts = 0;
+    let noMatch = 0;
+    let failed = 0;
+    try {
+      for (let index = 0; index < targets.length; index++) {
+        const lead = targets[index];
+        setBulkProgress(`${index + 1}/${targets.length}`);
+        setLookupNotice(`Bulk lookup ${index + 1} of ${targets.length}: ${lead.name || lead.linkedin}. The page stays open while this runs.`);
+        try {
+          const response = await fetch("/api/lookup", {
+            method:"POST",
+            headers:{ "Content-Type":"application/json" },
+            body:JSON.stringify({
+              linkedinUrl:lead.linkedin,
+              fullName:lead.name,
+              company:lead.company,
+              companyDomain:lead.domain,
+              includeEmailGuess
+            })
+          });
+          const result = await response.json() as {
+            message?:string;
+            lead?: { fullName?:string; company?:string; title?:string; email?:string; phone?:string; emailSource?:string; phoneSource?:string };
+          };
+          if (!response.ok) {
+            failed++;
+            continue;
+          }
+          const found = result.lead ?? {};
+          if (found.email || found.phone) withContacts++;
+          else noMatch++;
+          setLeads(prev => prev.map(existing => existing.id === lead.id ? ({
+            ...existing,
+            name:found.fullName || existing.name,
+            company:found.company || existing.company,
+            title:found.title || existing.title,
+            email:found.email || existing.email,
+            phone:found.phone || existing.phone,
+            emailSource:found.emailSource || existing.emailSource,
+            phoneSource:found.phoneSource || existing.phoneSource,
+            source:(found.email || found.phone) ? "Public-source / enrichment lookup" : existing.source
+          }) : existing));
+        } catch {
+          failed++;
+        }
+      }
+      setNotice(`Bulk lookup finished: ${withContacts} profiles returned at least one contact, ${noMatch} had no match, and ${failed} failed. See each row's source fields and export a CSV backup.`);
+      setLookupNotice("Bulk lookup completed. Check the contact evidence/source fields before outreach.");
+    } finally {
+      setBulkLoading(false);
+      setBulkProgress("");
+    }
+  }
+
   function importCsv(file:File) {
     Papa.parse<Record<string,unknown>>(file, { header:true, skipEmptyLines:true, complete:({data}) => {
       const mapped:Lead[] = data.map(row => {
@@ -137,7 +203,7 @@ export default function Home() {
         };
         const rawStatus = get("status");
         const validStatus = ["New","Contacted","Interested","Converted"].includes(rawStatus) ? rawStatus as Lead["status"] : "New";
-        return { id:newId(), name:get("name","full name"), title:get("title","job title","designation"), company:get("company","company name"), industry:get("industry"), city:get("city","location"), email:get("email","work email","professional email"), phone:get("phone","business phone","mobile"), linkedin:get("linkedin","linkedin url","profile url"), status:validStatus, source:"CSV import", emailSource:get("email source"), phoneSource:get("phone source") };
+        return { id:newId(), name:get("name","full name"), title:get("title","job title","designation"), company:get("company","company name"), domain:get("company domain","company website","website","domain","company url"), industry:get("industry"), city:get("city","location"), email:get("email","work email","professional email"), phone:get("phone","business phone","mobile"), linkedin:get("linkedin","linkedin url","profile url"), status:validStatus, source:"CSV import", emailSource:get("email source"), phoneSource:get("phone source") };
       }).filter(l => l.name || l.linkedin || l.email || l.phone);
       setLeads(prev => {
         const urls = new Set(prev.map(l => cleanUrl(l.linkedin).toLowerCase()).filter(Boolean));
@@ -208,11 +274,11 @@ export default function Home() {
     <section className="stats">{stats.map(({label,value,Icon})=><div className="stat" key={label}><div className="stat-icon"><Icon size={20}/></div><div><div className="stat-label">{label}</div><div className="stat-value">{value}</div></div></div>)}</section>
 
     {showAdd && <section className="card" style={{marginBottom:20}}><h2 className="section-title">Add a lead</h2><p className="section-subtitle">Save a lead or import contact details from a source you are authorized to use.</p><form onSubmit={saveLead}><div className="grid-form">{([
-      ["name","Full name"],["title","Job title"],["company","Company"],["industry","Industry"],["city","City / location"],["linkedin","LinkedIn profile URL"],["email","Professional email"],["phone","Business phone"]
+      ["name","Full name"],["title","Job title"],["company","Company"],["domain","Company website/domain"],["industry","Industry"],["city","City / location"],["linkedin","LinkedIn profile URL"],["email","Professional email"],["phone","Business phone"]
     ] as const).map(([key,label])=><input key={key} className="field" placeholder={label} value={form[key]} onChange={e=>setForm(p=>({...p,[key]:e.target.value}))}/>)}</div><div style={{display:"flex",gap:9,marginTop:13}}><button className="btn" type="submit">Save lead</button><button className="btn btn-secondary" type="button" onClick={()=>setShowAdd(false)}>Cancel</button></div></form></section>}
 
     <section className="card">
-      <div className="toolbar"><div><h2 className="section-title">Lead database</h2><p className="section-subtitle">Search, filter, import, export, and maintain source attribution.</p></div><button className="btn btn-secondary" onClick={exportCsv}><Download size={16}/> Export CSV</button></div>
+      <div className="toolbar"><div><h2 className="section-title">Lead database</h2><p className="section-subtitle">Search, filter, import, export, and maintain source attribution.</p></div><div className="table-actions">{enrichableLeads.length > 0 && <button className="btn" onClick={enrichSavedLeads} disabled={bulkLoading || lookupLoading}><Search size={16}/>{bulkLoading ? `Enriching ${bulkProgress}…` : `Enrich ${enrichableLeads.length} profiles`}</button>}<button className="btn btn-secondary" onClick={exportCsv}><Download size={16}/> Export CSV</button></div></div>
       <div className="searchbar" style={{marginBottom:16}}>
         <div style={{position:"relative",flex:"1 1 240px"}}><Search size={16} style={{position:"absolute",left:12,top:14,color:"var(--muted)"}}/><input className="field" style={{paddingLeft:38}} value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search name, company, email, phone..."/></div>
         <div style={{position:"relative",minWidth:175}}><Filter size={15} style={{position:"absolute",left:11,top:14,color:"var(--muted)"}}/><select className="field" style={{paddingLeft:32}} value={status} onChange={e=>setStatus(e.target.value)}>{["All statuses","New","Contacted","Interested","Converted"].map(s=><option key={s}>{s}</option>)}</select></div>
@@ -220,7 +286,7 @@ export default function Home() {
       <div className="table-wrap"><table><thead><tr>{["Lead","Company","Location","Email & phone","Status","Source",""].map(h=><th key={h}>{h}</th>)}</tr></thead><tbody>
         {filtered.map(l=><tr key={l.id}>
           <td><div style={{fontWeight:750}}>{l.name || "Unnamed lead"}</div><div className="sub">{l.title || "Title not provided"}</div>{l.linkedin && <a href={l.linkedin} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:5,marginTop:7,fontSize:12,color:"var(--accent)",textDecoration:"none"}}><Linkedin size={12}/> Profile</a>}</td>
-          <td><div>{l.company || "—"}</div><div className="sub">{l.industry || "—"}</div></td>
+          <td><div>{l.company || "—"}</div><div className="sub">{l.industry || "—"}</div>{l.domain && <div className="sub">{l.domain}</div>}</td>
           <td>{l.city || "—"}</td>
           <td><div>{l.email || "Email not found"}</div><div className="sub">{l.emailSource ? "Source: "+l.emailSource : ""}</div><div style={{marginTop:7}}>{l.phone || "Phone not found"}</div><div className="sub">{l.phoneSource ? "Source: "+l.phoneSource : ""}</div></td>
           <td><select className="field status-select" aria-label={"Status for "+l.name} value={l.status} onChange={e=>setLeads(p=>p.map(x=>x.id===l.id?{...x,status:e.target.value as Lead["status"]}:x))}>{["New","Contacted","Interested","Converted"].map(s=><option key={s}>{s}</option>)}</select></td>
