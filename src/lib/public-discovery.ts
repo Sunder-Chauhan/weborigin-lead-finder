@@ -116,6 +116,18 @@ function safePhone(value: string): string | null {
   return asText(candidate);
 }
 
+function robotsRuleMatches(rule: string, pathname: string): boolean {
+  if (rule === "*") return true;
+  const exact = rule.endsWith("$");
+  const normalized = exact ? rule.slice(0, -1) : rule;
+  const wildcard = normalized.includes("*");
+  const prefix = normalized.split("*")[0];
+  if (!pathname.startsWith(prefix)) return false;
+  // We intentionally over-block complex wildcard rules rather than risk crawling a disallowed path.
+  if (wildcard) return true;
+  return exact ? pathname === normalized : pathname.startsWith(normalized);
+}
+
 function isAllowedByRobots(robots: string, pathname: string): boolean {
   const groups: Array<{ agents: string[]; disallows: string[] }> = [];
   let group: { agents: string[]; disallows: string[] } = { agents: [], disallows: [] };
@@ -144,7 +156,7 @@ function isAllowedByRobots(robots: string, pathname: string): boolean {
   const exact = groups.filter((entry) => entry.agents.some((agent) => agent === "weboriginleadfinder"));
   const applicable = exact.length ? exact : groups.filter((entry) => entry.agents.includes("*"));
   const disallows = applicable.flatMap((entry) => entry.disallows);
-  return !disallows.some((blockedPath) => pathname.startsWith(blockedPath));
+  return !disallows.some((rule) => robotsRuleMatches(rule, pathname));
 }
 async function waitForHost(hostname: string): Promise<void> {
   const now = Date.now();
@@ -298,6 +310,15 @@ export async function discoverPublicContacts(input: PublicDiscoveryInput): Promi
     } else robots = robotResponse.text;
   } catch (error) {
     throw new Error(error instanceof Error ? error.message : "Could not check robots.txt.");
+  }
+
+  if (!isAllowedByRobots(robots, home.pathname || "/")) {
+    return {
+      contacts: [],
+      pagesVisited: [],
+      notes: ["The homepage path is disallowed by robots.txt; the crawler stopped without fetching it."],
+      domain,
+    };
   }
 
   const homeResponse = await safeFetchText(home);
