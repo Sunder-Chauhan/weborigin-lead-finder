@@ -61,7 +61,15 @@ These tools generate possible name@domain formats and check DNS/SMTP. Their own 
 
 **Fit:** Useful algorithmic ideas, but candidates must not be presented as confirmed addresses just because a mail server accepts them.
 
-### 6. Phone OSINT / reverse-lookup projects — wrong direction for this use case
+### 6. SearXNG — open-source metasearch for broader public-web discovery
+
+Repository: https://github.com/searxng/searxng
+
+SearXNG provides an HTTP search API whose `/search` endpoint supports a `q` query and selectable `format=json` when enabled by the instance configuration. Official documentation: https://docs.searxng.org/dev/search_api.html.
+
+**Fit:** Useful optional search infrastructure for finding publicly indexed pages, without buying a proprietary search API key. It is not a contact database and it cannot guarantee indexed emails or phone numbers. We integrate with the API rather than copy SearXNG source; it remains a separate AGPL-licensed service.
+
+### 7. Phone OSINT / reverse-lookup projects — wrong direction for this use case
 
 Searches surfaced projects aimed at reverse lookup, caller ID, phone-number validation, and OSINT **starting from an already-known phone number**. These can identify line type/carrier or search information associated with a number. They do not generally solve the inverse problem of obtaining a person's unpublished number from a LinkedIn URL.
 
