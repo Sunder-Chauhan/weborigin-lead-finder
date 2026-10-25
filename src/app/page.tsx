@@ -80,7 +80,7 @@ export default function Home() {
     let targetId = leads.find(l => cleanUrl(l.linkedin).toLowerCase() === url.toLowerCase())?.id;
     if (!targetId) {
       targetId = newId();
-      const newLead:Lead = { ...emptyForm, id:targetId, name:"Profile to research", linkedin:url, status:"New", source:"Lookup queued" };
+      const newLead:Lead = { ...emptyForm, id:targetId, name:fullName || "Profile to research", company:companyName, linkedin:url, status:"New", source:"Lookup queued" };
       setLeads(p => [newLead,...p]);
       setNotice("Profile saved to the lead list.");
     }
@@ -157,7 +157,7 @@ export default function Home() {
   const stats = [
     {label:"Total leads",value:leads.length,Icon:Users},
     {label:"New leads",value:leads.filter(l=>l.status==="New").length,Icon:Building2},
-    {label:"Emails saved",value:leads.filter(l=>!!l.email).length,Icon:Mail},
+    {label:"Emails saved",value:leads.filter(l=>!!l.email && !l.emailSource?.includes("GUESS; unverified")).length,Icon:Mail},
     {label:"Phones saved",value:leads.filter(l=>!!l.phone).length,Icon:Phone}
   ];
 
