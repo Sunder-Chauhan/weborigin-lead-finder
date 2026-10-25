@@ -42,7 +42,7 @@ function matchesCompanySource(sourceUrl: string, companyDomain?: string): boolea
   try {
     const raw = companyDomain.trim().toLowerCase().replace(/^https?:\/\//, "").split(/[/:?#]/)[0].replace(/^www\./, "");
     const host = new URL(sourceUrl).hostname.toLowerCase().replace(/^www\./, "");
-    return host === raw || host.endsWith(`.\${raw}`);
+    return host === raw || host.endsWith("." + raw);
   } catch {
     return false;
   }
