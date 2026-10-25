@@ -117,17 +117,20 @@ function safePhone(value: string): string | null {
 }
 
 function robotsRuleMatches(rule: string, pathname: string): boolean {
-  if (rule === "*") return true;
   const exact = rule.endsWith("$");
   const normalized = exact ? rule.slice(0, -1) : rule;
-  const wildcard = normalized.includes("*");
-  const prefix = normalized.split("*")[0];
-  if (!pathname.startsWith(prefix)) return false;
-  // We intentionally over-block complex wildcard rules rather than risk crawling a disallowed path.
-  if (wildcard) return true;
-  return exact ? pathname === normalized : pathname.startsWith(normalized);
+  const special = new Set([".", "+", "?", "^", "$", "{", "}", "(", ")", "|", "[", "]", String.fromCharCode(92)]);
+  const expression = normalized.split("*")
+    .map((part) => [...part].map((character) =>
+      special.has(character) ? String.fromCharCode(92) + character : character
+    ).join(""))
+    .join(".*");
+  try {
+    return new RegExp("^" + expression + (exact ? "$" : "")).test(pathname);
+  } catch {
+    return true;
+  }
 }
-
 function isAllowedByRobots(robots: string, pathname: string): boolean {
   const groups: Array<{ agents: string[]; disallows: string[] }> = [];
   let group: { agents: string[]; disallows: string[] } = { agents: [], disallows: [] };
