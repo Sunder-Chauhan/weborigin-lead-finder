@@ -133,7 +133,7 @@ function isAllowedByRobots(robots: string, pathname: string): boolean {
       disallows.push(value);
     }
   }
-  return appliesToWildcard && !disallows.some((path) => pathname.startsWith(path));
+  return !appliesToWildcard || !disallows.some((path) => pathname.startsWith(path));
 }
 
 async function waitForHost(hostname: string): Promise<void> {
