@@ -11,6 +11,7 @@ Free-tier-first lead management and professional contact discovery for legitimat
 - Email and phone fields with provider/source attribution
 - Supabase schema with row-level security for the next persistence/auth stage
 - Free-first public company website discovery for published professional emails and public phone numbers
+- Optional self-hosted SearXNG metasearch for broader public-web snippets, with low confidence and source attribution
 - Source URL, evidence excerpt, confidence and contact evidence type displayed for each discovery
 - In-memory 30-minute result cache, robots.txt handling, per-host pacing, page-size/time limits and basic SSRF/private-address safeguards
 - Optional Tomba fallback gated by an explicit environment flag
@@ -20,6 +21,8 @@ Free-tier-first lead management and professional contact discovery for legitimat
 In the lookup form, enter the LinkedIn URL plus the person's name (optional) and the company's official domain (for example, `example.com`). The free adapter checks the public homepage and a small set of contact/about/team/leadership pages, subject to `robots.txt`. It extracts company-domain emails and publicly listed phones, returns source links and evidence snippets, and caches results in memory for 30 minutes.
 
 A public phone number is conservatively labelled as a company number; WebOrigin does not infer that it is someone's direct mobile. A guessed `first.last@domain` candidate is optional, explicitly marked as a guess, and not mailbox-verified. No LinkedIn profile page is scraped.
+
+For broader searches, optionally run your own [SearXNG](https://github.com/searxng/searxng) instance and set `SEARXNG_BASE_URL=http://localhost:8080/`. WebOrigin queries its JSON search endpoint for the person's name/company and extracts contacts only from relevant result snippets. Configure your SearXNG `search.formats` to include `json`; the official [Search API documentation](https://docs.searxng.org/dev/search_api.html) notes that JSON format may be disabled on some instances. Search snippets have lower confidence than contacts extracted from an official company page and must be opened and checked. This uses SearXNG as a separate service; WebOrigin does not copy its AGPL code.
 
 The crawl has request timeouts, a per-page size cap, same-host redirect handling, per-host pacing, and basic checks against private/local IP addresses. It is deliberately disabled in production until authentication, durable per-user quotas, and abuse controls are implemented.
 
