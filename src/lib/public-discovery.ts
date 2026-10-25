@@ -274,6 +274,7 @@ export async function discoverPublicContacts(input: PublicDiscoveryInput): Promi
   home.hash = "";
   home.search = "";
   const domain = home.hostname.toLowerCase();
+  const emailDomain = domain.startsWith("www.") ? domain.slice(4) : domain;
   const cacheKey = `${domain}|${(input.fullName ?? "").trim().toLowerCase()}|${Boolean(input.includeEmailGuess)}`;
   const cached = cache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.result;
@@ -326,7 +327,7 @@ export async function discoverPublicContacts(input: PublicDiscoveryInput): Promi
       const email = safeEmail(raw);
       if (!email || emailSeen.has(email)) continue;
       // Preserve the official site/domain boundary; third-party email addresses on a page can be unrelated.
-      if (!email.endsWith(`@${domain}`)) continue;
+      if (!email.endsWith(`@${emailDomain}`) && !email.endsWith(`@${domain}`)) continue;
       emailSeen.add(email);
       const local = email.split("@")[0];
       const nameMatchesEmail = fullName && local.replace(/[._+-]/g, " ").includes(nameLower.replace(/\s+/g, " "));
@@ -371,7 +372,7 @@ export async function discoverPublicContacts(input: PublicDiscoveryInput): Promi
   }
 
   if (!contacts.some((c) => c.type === "email") && input.includeEmailGuess && fullName) {
-    const guess = inferEmail(fullName, domain);
+    const guess = inferEmail(fullName, emailDomain);
     if (guess) {
       contacts.push({
         type: "email",
