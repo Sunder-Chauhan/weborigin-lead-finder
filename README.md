@@ -41,6 +41,8 @@ Copy-Item .env.example .env.local
 For live contact lookup in local development, create a Tomba API key and secret in its dashboard, then fill these in `.env.local`:
 
 ```dotenv
+# Only set true when you explicitly accept provider usage/credit costs.
+ENABLE_TOMBA_FALLBACK=true
 TOMBA_API_KEY=your_key
 TOMBA_API_SECRET=your_secret
 ```
