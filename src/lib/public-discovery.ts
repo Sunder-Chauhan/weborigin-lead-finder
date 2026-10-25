@@ -135,9 +135,11 @@ function robotsRuleMatches(rule: string, pathname: string): boolean {
   }
 }
 function isAllowedByRobots(robots: string, pathname: string): boolean {
-  const groups: Array<{ agents: string[]; disallows: string[] }> = [];
-  let group: { agents: string[]; disallows: string[] } = { agents: [], disallows: [] };
-  let hasDirective = false;
+  type Rule = { allow: boolean; path: string };
+  type Group = { agents: string[]; rules: Rule[] };
+  const groups: Group[] = [];
+  let group: Group = { agents: [], rules: [] };
+  let hasRule = false;
   for (const rawLine of robots.split(/\r?\n/)) {
     const line = rawLine.replace(/#.*$/, "").trim();
     const split = line.indexOf(":");
@@ -145,24 +147,33 @@ function isAllowedByRobots(robots: string, pathname: string): boolean {
     const key = line.slice(0, split).trim().toLowerCase();
     const value = line.slice(split + 1).trim();
     if (key === "user-agent") {
-      if (hasDirective || (group.agents.length && group.disallows.length)) {
+      if (hasRule) {
         groups.push(group);
-        group = { agents: [], disallows: [] };
-        hasDirective = false;
+        group = { agents: [], rules: [] };
+        hasRule = false;
       }
       group.agents.push(value.toLowerCase());
-    } else if (key === "disallow" && value) {
-      group.disallows.push(value);
-      hasDirective = true;
-    } else if (key === "allow") {
-      hasDirective = true;
+    } else if ((key === "disallow" || key === "allow") && value) {
+      group.rules.push({ allow: key === "allow", path: value });
+      hasRule = true;
     }
   }
   if (group.agents.length) groups.push(group);
-  const exact = groups.filter((entry) => entry.agents.some((agent) => agent === "weboriginleadfinder"));
-  const applicable = exact.length ? exact : groups.filter((entry) => entry.agents.includes("*"));
-  const disallows = applicable.flatMap((entry) => entry.disallows);
-  return !disallows.some((rule) => robotsRuleMatches(rule, pathname));
+
+  const matchingAgents = groups.filter((entry) =>
+    entry.agents.some((agent) => agent === "weboriginleadfinder"));
+  const applicable = matchingAgents.length
+    ? matchingAgents
+    : groups.filter((entry) => entry.agents.includes("*"));
+  const rules = applicable.flatMap((entry) => entry.rules)
+    .filter((rule) => robotsRuleMatches(rule.path, pathname))
+    .sort((a, b) => {
+      const specificityA = a.path.replace(/[*$]/g, "").length;
+      const specificityB = b.path.replace(/[*$]/g, "").length;
+      // More specific rules win; Allow wins a tie.
+      return specificityB - specificityA || Number(b.allow) - Number(a.allow);
+    });
+  return rules.length === 0 || rules[0].allow;
 }
 async function waitForHost(hostname: string): Promise<void> {
   const now = Date.now();
@@ -215,8 +226,10 @@ async function safeFetchText(startUrl: URL): Promise<PublicPageResponse> {
       const location = response.headers.get("location");
       if (!location || hop === 3) throw new Error("Too many or invalid redirects from the company website.");
       const next = new URL(location, current);
-      // Keep redirects on the same hostname. Cross-host redirects are not followed.
-      if (next.hostname.toLowerCase() !== current.hostname.toLowerCase()) {
+      // Permit only same-host redirects or a www <-> apex redirect. Other hosts
+      // may be unrelated destinations and are blocked to reduce SSRF risk.
+      const stripWww = (hostname: string) => hostname.toLowerCase().replace(/^www\./, "");
+      if (stripWww(next.hostname) !== stripWww(current.hostname)) {
         throw new Error("A cross-domain redirect was blocked by the public-source fetcher.");
       }
       current = next;
