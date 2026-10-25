@@ -140,6 +140,9 @@ export default function Home() {
       return;
     }
     setBulkLoading(true);
+    setLookupResults([]);
+    setLookupNotes([]);
+    setPagesVisited([]);
     let withContacts = 0;
     let noMatch = 0;
     let failed = 0;
@@ -244,7 +247,7 @@ export default function Home() {
       <form onSubmit={runLookup}>
         <div className="lookup-row">
           <input className="field" value={profileUrl} onChange={e=>setProfileUrl(e.target.value)} placeholder="https://www.linkedin.com/in/username/" aria-label="LinkedIn profile URL"/>
-          <button className="btn" type="submit" disabled={lookupLoading}><Search size={16}/> {lookupLoading ? "Searching…" : "Find contacts"}</button>
+          <button className="btn" type="submit" disabled={lookupLoading || bulkLoading}><Search size={16}/> {lookupLoading ? "Searching…" : "Find contacts"}</button>
         </div>
         <div className="grid-form lookup-inputs">
           <input className="field" value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="Person's full name (helps match)" aria-label="Person full name"/>
