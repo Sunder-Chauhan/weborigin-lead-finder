@@ -1,0 +1,22 @@
+# WebOrigin's local SearXNG overlay. Keep it on localhost unless you know
+# how to secure and operate a public search service.
+use_default_settings: true
+
+general:
+  debug: false
+  instance_name: "WebOrigin Public Search"
+
+search:
+  # The default SearXNG config may disable JSON. WebOrigin's adapter requires it.
+  formats:
+    - html
+    - json
+
+server:
+  # This value is replaced by the SEARXNG_SECRET environment variable.
+  secret_key: "please-set-SEARXNG_SECRET-in-the-local-env-file"
+  limiter: true
+  image_proxy: true
+
+valkey:
+  url: valkey://valkey:6379/0
