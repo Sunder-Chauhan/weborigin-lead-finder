@@ -50,6 +50,10 @@ The code keeps the provider credentials server-side. Never place `TOMBA_API_KEY`
 
 GitHub Actions runs ESLint and a Next.js production build on pushes and pull requests to `main`.
 
+## Open-source enrichment research
+
+See [OPEN_SOURCE_ENRICHMENT_RESEARCH.md](./OPEN_SOURCE_ENRICHMENT_RESEARCH.md) for a review of open-source candidates, license considerations, and the recommended free-first architecture. The key limitation is that free public sources can discover published email and company contact numbers, but cannot guarantee a person's hidden direct mobile from a LinkedIn URL.
+
 ## Next implementation stages
 
 1. Supabase Auth login and user-isolated lead persistence.
