@@ -18,13 +18,21 @@ function isSupportedLinkedInProfile(value: unknown): value is string {
 }
 
 function pickLeadContact(contacts: PublicContact[], type: "email" | "phone"): PublicContact | undefined {
-  return contacts.filter((contact) => contact.type === type).sort((a, b) => {
-    const aRole = a.label === "other" ? 1 : 0;
-    const bRole = b.label === "other" ? 1 : 0;
-    const aGuess = a.verification === "inferred_unverified" ? 1 : 0;
-    const bGuess = b.verification === "inferred_unverified" ? 1 : 0;
-    return aGuess - bGuess || aRole - bRole || b.confidence - a.confidence;
-  })[0];
+  const priority = (contact: PublicContact): number => {
+    if (type === "email") {
+      if (contact.verification === "published_unverified" && contact.label === "professional") return 0;
+      if (contact.verification === "provider_returned_unverified") return 1;
+      if (contact.verification === "inferred_unverified") return 2;
+      return 3; // A role/shared inbox is less useful than a person-specific candidate.
+    }
+    if (contact.label === "direct") return 0;
+    if (contact.verification === "provider_returned_unverified") return 1;
+    if (contact.label === "company_main") return 2;
+    return 3;
+  };
+  return contacts.filter((contact) => contact.type === type).sort((a, b) =>
+    priority(a) - priority(b) || b.confidence - a.confidence
+  )[0];
 }
 
 async function lookupTomba(linkedinUrl: string) {
@@ -140,15 +148,20 @@ export async function POST(request: Request) {
   // Paid/provider data is an explicit opt-in. Merely having keys in .env.local
   // does not spend credits unless ENABLE_TOMBA_FALLBACK=true is set.
   const tombaEnabled = process.env.ENABLE_TOMBA_FALLBACK === "true";
+  const hasPublishedPersonalEmail = contacts.some((c) => c.type === "email" && c.label === "professional" && c.verification === "published_unverified");
+  const hasDirectPhone = contacts.some((c) => c.type === "phone" && c.label === "direct");
   if (tombaEnabled && process.env.TOMBA_API_KEY && process.env.TOMBA_API_SECRET &&
-      (!contacts.some((c) => c.type === "email") || !contacts.some((c) => c.type === "phone"))) {
+      (!hasPublishedPersonalEmail || !hasDirectPhone)) {
     try {
       const provider = await lookupTomba(linkedinUrl);
       if (provider) {
         resolvedFullName ||= provider.fullName;
         resolvedCompany ||= provider.company;
         resolvedTitle ||= provider.title;
-        const freeTypes = new Set(contacts.map((c) => c.type));
+        const freeTypes = new Set(contacts.filter((c) =>
+          (c.type === "email" && c.label === "professional" && c.verification === "published_unverified") ||
+          (c.type === "phone" && c.label === "direct")
+        ).map((c) => c.type));
         contacts.push(...provider.results.filter((c) => !freeTypes.has(c.type)));
         notes.push("Optional Tomba fallback was enabled. Provider-returned phones are not assumed to be direct mobiles.");
       }
