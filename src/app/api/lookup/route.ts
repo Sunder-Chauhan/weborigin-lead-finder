@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { discoverPublicContacts, type PublicContact } from "@/lib/public-discovery";
+import { discoverSearchIndexedContacts } from "@/lib/searxng-discovery";
 
 type JsonObject = Record<string, unknown>;
 const asString = (value: unknown): string => typeof value === "string" ? value.trim() : "";
@@ -143,6 +144,19 @@ export async function POST(request: Request) {
     }
   } else {
     notes.push("For the free lookup path, add the company's official website/domain. WebOrigin will not scrape restricted LinkedIn pages or guess hidden mobile numbers.");
+  }
+
+  // Optional broader public-web search through an operator-configured, self-hosted SearXNG instance.
+  // Snippet matches are lower-confidence than addresses extracted from the official company site.
+  if (process.env.SEARXNG_BASE_URL?.trim()) {
+    const searchResult = await discoverSearchIndexedContacts({
+      fullName,
+      companyName: company,
+      companyDomain,
+    });
+    contacts.push(...searchResult.contacts);
+    notes.push(...searchResult.notes);
+    if (searchResult.queriesRun) notes.push(`SearXNG public-web queries run: ${searchResult.queriesRun}.`);
   }
 
   // Paid/provider data is an explicit opt-in. Merely having keys in .env.local
