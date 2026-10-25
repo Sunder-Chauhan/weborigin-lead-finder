@@ -26,6 +26,16 @@ For broader searches, optionally run your own [SearXNG](https://github.com/searx
 
 The crawl has request timeouts, a per-page size cap, same-host redirect handling, per-host pacing, and basic checks against private/local IP addresses. It is deliberately disabled in production until authentication, durable per-user quotas, and abuse controls are implemented.
 
+### Optional wider public-web search
+
+WebOrigin can query an operator-run [SearXNG](https://github.com/searxng/searxng) metasearch service without a proprietary search API key. This is optional; when not configured, the official-company-site crawler still works. Follow the [official SearXNG Docker installation guide](https://docs.searxng.org/admin/installation-docker), then set the base URL in `.env.local`:
+
+```dotenv
+SEARXNG_BASE_URL=http://localhost:8080/
+```
+
+Ensure the SearXNG instance enables JSON results in its `search.formats` setting; otherwise its API can return 403. WebOrigin uses two short queries when a person's name is supplied, takes up to eight results per query, and labels any contact found in search snippets as lower-confidence and unverified. Search providers can rate-limit queries, and operating a self-hosted instance still requires a machine/network connection.
+
 ### Optional provider fallback
 
 Tomba is disabled by default, even if credentials are present. To opt into it for local testing, set `ENABLE_TOMBA_FALLBACK=true` in `.env.local` and configure the Tomba key/secret below. Phone enrichment may consume credits. Never expose keys in browser code.
