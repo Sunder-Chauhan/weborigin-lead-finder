@@ -401,7 +401,7 @@ export async function discoverPublicContacts(input: PublicDiscoveryInput): Promi
     }
   }
 
-  if (!contacts.some((c) => c.type === "email") && input.includeEmailGuess && fullName) {
+  if (!contacts.some((c) => c.type === "email" && c.label === "professional") && input.includeEmailGuess && fullName) {
     const guess = inferEmail(fullName, emailDomain);
     if (guess) {
       contacts.push({
@@ -417,7 +417,9 @@ export async function discoverPublicContacts(input: PublicDiscoveryInput): Promi
       notes.push("An email candidate was generated because you opted in. It is a guess, not a found or verified address.");
     }
   }
-  if (!contacts.some((c) => c.type === "email")) notes.push("No company-domain email was found on the pages checked.");
+  if (!contacts.some((c) => c.type === "email" && c.label === "professional" && c.verification === "published_unverified")) {
+    notes.push("No person-specific published email was found on the pages checked; any generated candidate remains unverified.");
+  }
   if (!contacts.some((c) => c.type === "phone")) notes.push("No usable public phone number was found on the pages checked.");
   notes.push("Publicly listed company numbers are not assumed to be personal mobile numbers. Phone line type was not independently verified.");
 
