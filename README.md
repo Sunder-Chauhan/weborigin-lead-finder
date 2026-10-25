@@ -1,50 +1,56 @@
 # WebOrigin Lead Finder
 
-Free-tier-first professional contact discovery for legitimate business outreach.
+Free-tier-first lead management and professional contact discovery for legitimate business outreach.
 
-## Current status
+## Current MVP
 
-This repository is initialized with the product plan and implementation guardrails. Next.js application files will be added in follow-up commits.
+- Next.js App Router + TypeScript dashboard
+- Single LinkedIn profile URL entry and validation
+- Local lead saving, search, status updates and deletion
+- CSV import/export
+- Email and phone fields with source attribution fields
+- Responsive UI and a server-side lookup endpoint placeholder
+- Browser-local persistence for demo use
 
-## Product goals
+## Important current limitation
 
-- Accept a LinkedIn profile URL or username.
-- Discover professional email addresses and business phone numbers from permitted sources.
-- Import and export lead lists via CSV.
-- Save leads, source attribution, verification status, and lookup history.
-- Add optional contact-enrichment providers through adapters.
-- Later support free allowances and paid plans.
+**Contact enrichment is not connected yet.** Adding a profile only saves it to the lead list. The lookup API intentionally returns `not_configured` until an authorized data-source adapter is implemented. No contact details are being retrieved or fabricated in the current MVP. Browser-local records are not shared across devices and are not a substitute for a production database.
 
-## Honest data coverage
+## Stack
 
-A LinkedIn URL does not itself expose hidden email addresses or mobile numbers. Results depend on published company information, user-provided datasets, and providers the user is authorized to use. The app must show each result's source and verification status and must not fabricate missing values.
+- Next.js 15.5.28, React 19, TypeScript
+- Supabase client dependencies are included for the next persistence/auth phase
+- Vercel-ready project structure
 
-This project will not bypass SignalHire or any other provider's authentication, paid credits, rate limits, or access restrictions. It will not scrape restricted LinkedIn data or attempt to evade protections.
+## Run locally (Windows PowerShell)
 
-## Planned stack
-
-- Next.js + TypeScript
-- Supabase Postgres and Auth
-- Vercel deployment
-- Source adapters for permitted public information and optional authorized enrichment APIs
-
-## Local setup (once the app files are committed)
+Requirements: Node.js 20.9+ and Git.
 
 ```powershell
 git clone https://github.com/Sunder-Chauhan/weborigin-lead-finder.git
 cd weborigin-lead-finder
 npm install
+Copy-Item .env.example .env.local
 npm run dev
 ```
 
-## Planned implementation stages
+Open http://localhost:3000.
 
-1. Dashboard, lead table, search/filter, and CSV import/export.
-2. Supabase schema, authentication, and row-level security.
-3. Public company-source discovery and provenance tracking.
-4. Optional authorized email and phone enrichment adapters with quotas.
-5. Lookup limits, billing integration, audit trail, and privacy controls.
+## Next implementation stages
+
+1. Add Supabase schema, authentication, and row-level security.
+2. Implement permitted public-source discovery and source attribution.
+3. Add optional authorized email and phone enrichment adapters.
+4. Add provider usage meters, caching, retry policy and per-user product quotas.
+5. Test contact match rates before describing coverage.
+6. Add pricing/billing and deploy to Vercel after environment configuration.
+
+## Honest contact coverage
+
+A LinkedIn URL alone does not expose hidden email addresses or mobile numbers. Results depend on publicly published data, user-supplied records, and providers the app is authorized to use. The app must distinguish direct mobile numbers from company switchboards and show source and verification status.
+
+This project will not bypass SignalHire or other providers' authentication, paid credits, rate limits, or access restrictions. It will not scrape restricted LinkedIn data or attempt to evade protections.
 
 ## Privacy and compliance
 
-Only collect and use professional contact information for a legitimate purpose. Respect website terms, provider contracts, applicable privacy law, outreach rules, retention policies, and deletion requests.
+Only collect and use professional contact information for a legitimate purpose. Respect provider contracts, website terms, applicable privacy law, outreach rules, retention policies, and deletion requests. Never put secret API keys in `NEXT_PUBLIC_*` environment variables or commit `.env.local`.
