@@ -185,7 +185,7 @@ export default function Home() {
           <input className="field" value={companyName} onChange={e=>setCompanyName(e.target.value)} placeholder="Company name (optional)" aria-label="Company name"/>
           <input className="field" value={companyDomain} onChange={e=>setCompanyDomain(e.target.value)} placeholder="Official company domain (example.com)" aria-label="Company domain"/>
         </div>
-        <label className="guess-toggle"><input type="checkbox" checked={includeEmailGuess} onChange={e=>setIncludeEmailGuess(e.target.checked}/> Also include one guessed first.last@domain email when no published email is found (unverified).</label>
+        <label className="guess-toggle"><input type="checkbox" checked={includeEmailGuess} onChange={e=>setIncludeEmailGuess(e.target.checked)}/> Also include one guessed first.last@domain email when no published email is found (unverified).</label>
       </form>
       <div className="notice warning"><CheckCircle2 size={17} style={{flex:"none",marginTop:1}}/><div>{lookupNotice}</div></div>
       {lookupResults.length > 0 && <section className="evidence-panel">
