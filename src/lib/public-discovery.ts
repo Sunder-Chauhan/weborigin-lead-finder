@@ -134,7 +134,7 @@ export function hasPhoneLabelNear(text: string, candidate: string): boolean {
 export function isContactNearName(text: string, fullName: string, contactValue: string, maxGap = 360): boolean {
   const normalizedText = text.toLowerCase().replace(/\s+/g, " ");
   const normalizedName = fullName.toLowerCase().replace(/\s+/g, " ").trim();
-  const normalizedContact = contactValue.toLowerCase().trim();
+  const normalizedContact = contactValue.toLowerCase().replace(/\s+/g, " ").trim();
   if (!normalizedName || !normalizedContact) return false;
   const contactPositions: number[] = [];
   let cursor = 0;
