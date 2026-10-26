@@ -1,4 +1,4 @@
-import type { PublicContact } from "@/lib/public-discovery";
+import { discoverContactsFromPublicPages, type PublicContact } from "@/lib/public-discovery";
 
 type SearchResult = {
   url?: unknown;
@@ -87,11 +87,17 @@ export async function discoverSearchIndexedContacts(input: {
   const context = [fullName ? `"${fullName}"` : "", companyName ? `"${companyName}"` : "", companyDomain ? `site:${companyDomain.replace(/^https?:\/\//, "").split(/[/:?#]/)[0]}` : ""]
     .filter(Boolean).join(" ");
   const queries = fullName
-    ? [`${context} email`, `${context} phone contact`]
+    ? [
+        `${context} email`,
+        `${context} phone OR mobile contact`,
+        `${context} business contact details`,
+        `${context} professional profile contact`,
+      ]
     : [`${context} email contact phone`];
   const contacts: PublicContact[] = [];
   const notes: string[] = [];
   const seen = new Set<string>();
+  const sourceUrls: string[] = [];
   let queriesRun = 0;
 
   for (const query of queries) {
@@ -134,6 +140,7 @@ export async function discoverSearchIndexedContacts(input: {
         (fullName.length > 0 && searchableText.includes(fullName.toLowerCase())) ||
         (companyName.length > 0 && searchableText.includes(companyName.toLowerCase()));
       if (!relevant) continue;
+      if (!sourceUrls.includes(sourceUrl)) sourceUrls.push(sourceUrl);
       const emails = evidenceText.match(/[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9.-]+\.[a-z]{2,}/gi) ?? [];
       for (const rawEmail of emails) {
         const email = normalizeEmail(rawEmail);
@@ -175,5 +182,20 @@ export async function discoverSearchIndexedContacts(input: {
   }
 
   if (contacts.length) notes.push("Search-engine snippets are leads, not independent verification. Open the source page before relying on a contact.");
-  return { contacts, notes, queriesRun };
+
+  // Snippets often omit phone/email fields. Open only a small number of relevant
+  // public result pages, with robots.txt and URL/private-host safeguards.
+  const fetched = await discoverContactsFromPublicPages({
+    urls: sourceUrls,
+    fullName,
+    companyDomain,
+  });
+  contacts.push(...fetched.contacts);
+  notes.push(...fetched.notes);
+  return {
+    contacts,
+    notes,
+    queriesRun,
+    pagesVisited: fetched.pagesVisited,
+  };
 }
