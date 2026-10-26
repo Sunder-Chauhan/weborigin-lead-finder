@@ -110,13 +110,29 @@ function safeEmail(value: string): string | null {
   return email;
 }
 
-function safePhone(value: string): string | null {
+export function normalizePublicPhone(value: string): string | null {
   const candidate = decodeEntities(value).replace(/^tel:/i, "").split(/[;,?]/)[0].trim();
   const digits = candidate.replace(/\D/g, "");
-  if (digits.length < 8 || digits.length > 15) return null;
-  // Require some phone-like formatting to avoid treating dates, IDs, and ZIPs as telephone numbers.
+  // Eight-digit strings are common case numbers, dates, and document references.
+  if (digits.length < 9 || digits.length > 15) return null;
+  if (/^\s*(?:\d{1,2}[-/.]\d{1,2}[-/.]\d{4}|\d{4}[-/.]\d{1,2}[-/.]\d{1,2})(?:\s+\d{1,2}(?::\d{2}){0,2})?\s*$/.test(candidate)) return null;
   if (!candidate.startsWith("+") && !/[()\s.-]/.test(candidate)) return null;
   return asText(candidate);
+}
+
+const PHONE_CONTEXT_RE = /\b(?:phone|telephone|tel\.?|mobile|cell(?:ular)?|call(?:\s+us)?|contact(?:\s+us)?|whatsapp|fax|helpline|customer\s+care|reach\s+us|direct\s+line|phone\s+number|mobile\s+number)\b/i;
+
+export function hasPhoneLabelNear(text: string, candidate: string): boolean {
+  const dateLike = /^\s*\d{1,2}[-/.]\d{1,2}[-/.]\d{4}(?:\s+\d{1,2}(?::\d{2}){0,2})?\s*$/.test(candidate);
+  if (dateLike) return false;
+  const index = text.toLowerCase().indexOf(candidate.toLowerCase());
+  if (index < 0) return false;
+  const nearby = text.slice(Math.max(0, index - 70), Math.min(text.length, index + candidate.length + 70));
+  return PHONE_CONTEXT_RE.test(nearby);
+}
+
+function safePhone(value: string): string | null {
+  return normalizePublicPhone(value);
 }
 
 function robotsRuleMatches(rule: string, pathname: string): boolean {
@@ -416,12 +432,15 @@ export async function discoverPublicContacts(input: PublicDiscoveryInput): Promi
     }
 
     const phoneCandidates = [
-      ...[...page.text.matchAll(/href\s*=\s*["']tel:([^"']+)["']/gi)].map((m) => decodeEntities(m[1])),
-      ...(visible.match(/(?:\+\s*\d{1,3}[\s().-]*)?(?:\(?\d{2,5}\)?[\s.-]+)?\d[\d\s().-]{5,}\d/g) ?? []),
+      ...[...page.text.matchAll(/href\s*=\s*["']tel:([^"']+)["']/gi)].map((m) => ({ value: decodeEntities(m[1]), explicit: true })),
+      ...(visible.match(/(?:\+\s*\d{1,3}[\s().-]*)?(?:\(?\d{2,5}\)?[\s.-]+)?\d[\d\s().-]{5,}\d/g) ?? [])
+        .map((value) => ({ value, explicit: false })),
     ];
-    for (const raw of phoneCandidates) {
+    for (const candidate of phoneCandidates) {
+      const raw = candidate.value;
       const phone = safePhone(raw);
-      if (!phone || phoneSeen.has(phone.replace(/\D/g, ""))) continue;
+      if (!phone || (!candidate.explicit && !hasPhoneLabelNear(visible, raw)) ||
+          phoneSeen.has(phone.replace(/\D/g, ""))) continue;
       phoneSeen.add(phone.replace(/\D/g, ""));
       const phoneIndex = visible.indexOf(phone);
       const nearName = pageMatchesName && nameLower.length > 0 && phoneIndex >= 0 &&
@@ -567,12 +586,14 @@ export async function discoverContactsFromPublicPages(input: {
       }
 
       const phoneCandidates = [
-        ...[...page.text.matchAll(/href\s*=\s*["']tel:([^"']+)["']/gi)].map((match) => decodeEntities(match[1])),
-        ...(visible.match(/(?:\+\s*\d{1,3}[\s().-]*)?(?:\(?\d{2,5}\)?[\s.-]+)?\d[\d\s().-]{5,}\d/g) ?? []),
+        ...[...page.text.matchAll(/href\s*=\s*["']tel:([^"']+)["']/gi)].map((match) => ({ value: decodeEntities(match[1]), explicit: true })),
+        ...(visible.match(/(?:\+\s*\d{1,3}[\s().-]*)?(?:\(?\d{2,5}\)?[\s.-]+)?\d[\d\s().-]{5,}\d/g) ?? [])
+          .map((value) => ({ value, explicit: false })),
       ];
-      for (const rawPhone of phoneCandidates) {
+      for (const candidate of phoneCandidates) {
+        const rawPhone = candidate.value;
         const phone = safePhone(rawPhone);
-        if (!phone) continue;
+        if (!phone || (!candidate.explicit && !hasPhoneLabelNear(visible, rawPhone))) continue;
         const digits = phone.replace(/\D/g, "");
         if (phonesSeen.has(digits)) continue;
         phonesSeen.add(digits);
