@@ -185,7 +185,10 @@ export async function POST(request: Request) {
       notes.push(error instanceof Error ? error.message : "The public website lookup failed.");
     }
   } else {
-    notes.push("For the free lookup path, add the company's official website/domain. WebOrigin will not scrape restricted LinkedIn pages or guess hidden mobile numbers.");
+    notes.push(process.env.SEARXNG_BASE_URL?.trim()
+      ? "No company domain was supplied, so 0 official company pages were crawled. The configured SearXNG service will search public-web snippets using the supplied or URL-derived name."
+      : "No company domain was supplied, so 0 official pages were checked. SearXNG is also not configured. To search from a LinkedIn URL alone, start the included local SearXNG service and set SEARXNG_BASE_URL as described in README.md, or supply the company's official domain for direct website discovery.");
+    notes.push("WebOrigin will not scrape restricted LinkedIn pages or invent hidden mobile numbers.");
   }
 
   // Optional broader public-web search through an operator-configured, self-hosted SearXNG instance.
