@@ -63,7 +63,7 @@ export async function discoverSearchIndexedContacts(input: {
   fullName?: string;
   companyName?: string;
   companyDomain?: string;
-}): Promise<{ contacts: PublicContact[]; notes: string[]; queriesRun: number }> {
+}): Promise<{ contacts: PublicContact[]; notes: string[]; queriesRun: number; pagesVisited: string[] }> {
   const configured = process.env.SEARXNG_BASE_URL?.trim();
   if (!configured) return { contacts: [], notes: [], queriesRun: 0 };
 
