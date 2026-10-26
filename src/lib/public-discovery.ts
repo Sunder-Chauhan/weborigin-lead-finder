@@ -472,3 +472,133 @@ export async function discoverPublicContacts(input: PublicDiscoveryInput): Promi
   }
   return result;
 }
+
+
+/**
+ * Fetch a small number of search-result pages that mention the target name.
+ * This stays on public HTTP/HTTPS pages, skips LinkedIn/social profile hosts,
+ * checks robots.txt, and reuses the same size/time/private-host guards as the
+ * official-company crawler. This does not open login-gated pages or profiles.
+ */
+export async function discoverContactsFromPublicPages(input: {
+  urls: string[];
+  fullName?: string;
+  companyDomain?: string;
+}): Promise<{ contacts: PublicContact[]; pagesVisited: string[]; notes: string[] }> {
+  const fullName = (input.fullName ?? "").trim();
+  const normalizedName = fullName.toLowerCase().replace(/\s+/g, " ");
+  if (!fullName || !input.urls.length) return { contacts: [], pagesVisited: [], notes: [] };
+
+  const contacts: PublicContact[] = [];
+  const pagesVisited: string[] = [];
+  const notes: string[] = [];
+  const emailsSeen = new Set<string>();
+  const phonesSeen = new Set<string>();
+  const uniqueUrls = [...new Set(input.urls)].slice(0, 6);
+
+  for (const rawUrl of uniqueUrls) {
+    let requested: URL;
+    try {
+      requested = new URL(rawUrl);
+    } catch {
+      continue;
+    }
+    if (!["http:", "https:"].includes(requested.protocol) || requested.username || requested.password) continue;
+    const host = requested.hostname.toLowerCase().replace(/^www\./, "");
+    if (
+      host === "linkedin.com" || host.endsWith(".linkedin.com") ||
+      host === "facebook.com" || host.endsWith(".facebook.com") ||
+      host === "instagram.com" || host.endsWith(".instagram.com") ||
+      host === "x.com" || host.endsWith(".x.com") ||
+      host === "twitter.com" || host.endsWith(".twitter.com") ||
+      host === "tiktok.com" || host.endsWith(".tiktok.com")
+    ) continue;
+
+    try {
+      const robotsResponse = await safeFetchText(new URL("/robots.txt", requested));
+      let robots = "";
+      if (robotsResponse.status === 200) robots = robotsResponse.text;
+      else if (robotsResponse.status !== 404 && robotsResponse.status !== 410) {
+        notes.push(`Skipped a search-result host because robots.txt could not be checked: ${host}`);
+        continue;
+      }
+      if (!isAllowedByRobots(robots, requested.pathname || "/")) {
+        notes.push(`Skipped a search-result path disallowed by robots.txt: ${host}${requested.pathname}`);
+        continue;
+      }
+      const page = await safeFetchText(requested);
+      if (page.status !== 200 || !page.text) continue;
+      const visible = htmlToText(page.text);
+      const visibleLower = visible.toLowerCase().replace(/\s+/g, " ");
+      if (!visibleLower.includes(normalizedName)) continue;
+      pagesVisited.push(page.url.href);
+
+      const pageHost = page.url.hostname.toLowerCase().replace(/^www\./, "");
+      const targetDomain = (input.companyDomain ?? "").trim().toLowerCase()
+        .replace(/^https?:\/\//, "").split(/[/:?#]/)[0].replace(/^www\./, "");
+      const companyPage = !!targetDomain && (pageHost === targetDomain || pageHost.endsWith("." + targetDomain));
+      const emails = [
+        ...[...page.text.matchAll(/href\s*=\s*["']mailto:([^"'?#]+)[^"']*["']/gi)].map((match) => decodeEntities(match[1])),
+        ...(visible.match(/[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9.-]+\.[a-z]{2,}/gi) ?? []),
+      ];
+      for (const rawEmail of emails) {
+        const email = safeEmail(rawEmail);
+        if (!email || emailsSeen.has(email)) continue;
+        if (targetDomain && !email.endsWith("@" + targetDomain) &&
+            !(targetDomain.startsWith("www.") && email.endsWith("@" + targetDomain.slice(4)))) continue;
+        emailsSeen.add(email);
+        const local = email.split("@")[0];
+        const roleInbox = /^(info|sales|support|hello|contact|admin|office|careers|jobs|press|marketing|enquir|enquiry|enquiries|customerservice)([._+-].*)?$/i.test(local);
+        const firstLast = fullName.toLowerCase().split(/\s+/).filter(Boolean);
+        const normalizedLocal = local.replace(/[._+-]/g, " ");
+        const personNamed = firstLast.length >= 2 && normalizedLocal.includes(firstLast[0]) && normalizedLocal.includes(firstLast[firstLast.length - 1]);
+        contacts.push({
+          type: "email",
+          value: email,
+          label: roleInbox ? "other" : "professional",
+          sourceName: companyPage
+            ? "Official company page (person name found on page)"
+            : "Public search-result page (person name found on page)",
+          sourceUrl: page.url.href,
+          verification: "published_unverified",
+          confidence: personNamed ? 0.9 : roleInbox ? 0.55 : companyPage ? 0.78 : 0.66,
+          evidence: compactEvidence(visible, email),
+        });
+      }
+
+      const phoneCandidates = [
+        ...[...page.text.matchAll(/href\s*=\s*["']tel:([^"']+)["']/gi)].map((match) => decodeEntities(match[1])),
+        ...(visible.match(/(?:\+\s*\d{1,3}[\s().-]*)?(?:\(?\d{2,5}\)?[\s.-]+)?\d[\d\s().-]{5,}\d/g) ?? []),
+      ];
+      for (const rawPhone of phoneCandidates) {
+        const phone = safePhone(rawPhone);
+        if (!phone) continue;
+        const digits = phone.replace(/\D/g, "");
+        if (phonesSeen.has(digits)) continue;
+        phonesSeen.add(digits);
+        const index = visible.indexOf(phone);
+        const nearby = index >= 0 ? visible.slice(Math.max(0, index - 160), Math.min(visible.length, index + phone.length + 160)).toLowerCase() : "";
+        const explicitlyDirect = /mobile|cell(?:ular)?|direct line|personal phone|mobile number/.test(nearby);
+        contacts.push({
+          type: "phone",
+          value: phone,
+          label: explicitlyDirect ? "direct" : companyPage ? "company_main" : "other",
+          sourceName: explicitlyDirect
+            ? "Public page (number labelled mobile/direct near the person; not independently verified)"
+            : companyPage
+              ? "Official company page (public phone; not confirmed as direct mobile)"
+              : "Public search-result page (phone line type unverified)",
+          sourceUrl: page.url.href,
+          verification: "published_unverified",
+          confidence: explicitlyDirect ? 0.73 : companyPage ? 0.68 : 0.5,
+          evidence: compactEvidence(visible, phone),
+        });
+      }
+    } catch (error) {
+      notes.push(`Skipped a search-result page: ${error instanceof Error ? error.message : "fetch failed"}`);
+    }
+  }
+
+  if (pagesVisited.length) notes.push(`Opened ${pagesVisited.length} public search-result pages and extracted contact candidates only from pages that visibly mention the target name.`);
+  return { contacts, pagesVisited, notes };
+}
