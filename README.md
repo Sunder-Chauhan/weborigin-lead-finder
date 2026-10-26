@@ -13,7 +13,8 @@ Free-tier-first lead management and professional contact discovery for legitimat
 - Free-first public company website discovery for published professional emails and public phone numbers
 - Optional self-hosted SearXNG metasearch for broader public-web snippets, with low confidence and source attribution
 - Source URL, evidence excerpt, confidence and contact evidence type displayed for each discovery
-- In-memory 30-minute result cache, robots.txt handling, per-host pacing, page-size/time limits and basic SSRF/private-address safeguards
+- In-memory 30-minute result cache, robots.txt handling, per-host pacing, bounded page reads, and basic SSRF/private-address safeguards
+- Filters likely legal-case search results and requires contact evidence to be near the target person's name for non-company sources
 - Optional Tomba fallback gated by an explicit environment flag
 
 ## Free public-source lookup
@@ -36,7 +37,7 @@ Then add this line to the **root** `.env.local` file (not the nested SearXNG env
 SEARXNG_BASE_URL=http://localhost:8080/
 ```
 
-The included `searxng/settings.yml` enables JSON results, which WebOrigin needs. The container's port is bound to `127.0.0.1` only. Stop it with `docker compose --env-file searxng/.env -f searxng/docker-compose.yml down`. See the [official Docker installation guide](https://docs.searxng.org/admin/installation-docker) for maintenance details. WebOrigin runs four short query variants for the person's name/company, examines snippets, and fetches up to six relevant public result pages to extract contact evidence when the person’s name appears on the page. Configure your SearXNG `search.formats` to include `json`; the official [Search API documentation](https://docs.searxng.org/dev/search_api.html) notes that JSON format may be disabled on some instances. Search snippets have lower confidence than contacts extracted from an official company page and must be opened and checked. This uses SearXNG as a separate service; WebOrigin does not copy its AGPL code.
+The included `searxng/settings.yml` enables JSON results, which WebOrigin needs. The container's port is bound to `127.0.0.1` only. Stop it with `docker compose --env-file searxng/.env -f searxng/docker-compose.yml down`. See the [official Docker installation guide](https://docs.searxng.org/admin/installation-docker) for maintenance details. WebOrigin runs four short query variants for the person's name/company, examines snippets, and fetches up to six relevant public result pages to extract contact evidence when the person’s name appears on the page. Configure your SearXNG `search.formats` to include `json`; the official [Search API documentation](https://docs.searxng.org/dev/search_api.html) notes that JSON format may be disabled on some instances. Search snippets have lower confidence than contacts extracted from an official company page and must be opened and checked. Likely legal judgments/case-citation pages are skipped as poor contact evidence. Large result pages are read only up to the configured byte cap instead of being downloaded without limit. This uses SearXNG as a separate service; WebOrigin does not copy its AGPL code.
 
 The crawl has request timeouts, a per-page size cap, same-host redirect handling, per-host pacing, and basic checks against private/local IP addresses. It is deliberately disabled in production until authentication, durable per-user quotas, and abuse controls are implemented.
 
