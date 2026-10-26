@@ -25,14 +25,14 @@ export type PublicDiscoveryResult = {
   domain: string;
 };
 
-type PublicPageResponse = { url: URL; status: number; text: string; contentType: string };
+type PublicPageResponse = { url: URL; status: number; text: string; contentType: string; truncated?: boolean };
 
 const MAX_PAGE_BYTES = 900_000;
 const MAX_PAGES = 6;
 const CACHE_TTL_MS = 30 * 60 * 1000;
 const cache = new Map<string, { expiresAt: number; result: PublicDiscoveryResult }>();
 const lastRequestAt = new Map<string, number>();
-const pageCache = new Map<string, { expiresAt: number; resolvedUrl: string; status: number; text: string; contentType: string }>();
+const pageCache = new Map<string, { expiresAt: number; resolvedUrl: string; status: number; text: string; contentType: string; truncated?: boolean }>();
 
 const asText = (value: string) => value.replace(/\s+/g, " ").trim();
 
@@ -203,7 +203,7 @@ async function safeFetchText(startUrl: URL): Promise<PublicPageResponse> {
   const cacheKey = startUrl.href;
   const cached = pageCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
-    return { url: new URL(cached.resolvedUrl), status: cached.status, text: cached.text, contentType: cached.contentType };
+    return { url: new URL(cached.resolvedUrl), status: cached.status, text: cached.text, contentType: cached.contentType, truncated: cached.truncated };
   }
   if (cached) pageCache.delete(cacheKey);
   const cacheAndReturn = (result: PublicPageResponse): PublicPageResponse => {
@@ -214,6 +214,7 @@ async function safeFetchText(startUrl: URL): Promise<PublicPageResponse> {
         status: result.status,
         text: result.text,
         contentType: result.contentType,
+        truncated: result.truncated,
       });
       if (pageCache.size > 2_000) {
         const oldestKey = pageCache.keys().next().value;
@@ -253,7 +254,9 @@ async function safeFetchText(startUrl: URL): Promise<PublicPageResponse> {
     }
     const contentType = response.headers.get("content-type") ?? "";
     const declaredLength = Number(response.headers.get("content-length") ?? "0");
-    if (declaredLength > MAX_PAGE_BYTES) throw new Error("The webpage is larger than the allowed page-size limit.");
+    // Do not reject a useful public page solely because its total size is large.
+    // The stream reader below caps bytes read and returns a bounded prefix instead.
+    void declaredLength;
     if (!response.ok) return cacheAndReturn({ url: current, status: response.status, text: "", contentType });
     if (!/(text\/html|application\/xhtml\+xml|text\/plain)/i.test(contentType)) {
       return cacheAndReturn({ url: current, status: response.status, text: "", contentType });
@@ -262,16 +265,23 @@ async function safeFetchText(startUrl: URL): Promise<PublicPageResponse> {
     const reader = response.body.getReader();
     const chunks: Uint8Array[] = [];
     let size = 0;
+    let truncated = false;
     try {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        size += value.byteLength;
-        if (size > MAX_PAGE_BYTES) {
+        const remaining = MAX_PAGE_BYTES - size;
+        if (value.byteLength > remaining) {
+          if (remaining > 0) {
+            chunks.push(value.slice(0, remaining));
+            size += remaining;
+          }
+          truncated = true;
           await reader.cancel();
-          throw new Error("The webpage is larger than the allowed page-size limit.");
+          break;
         }
         chunks.push(value);
+        size += value.byteLength;
       }
     } finally {
       reader.releaseLock();
@@ -279,7 +289,13 @@ async function safeFetchText(startUrl: URL): Promise<PublicPageResponse> {
     const bytes = new Uint8Array(size);
     let offset = 0;
     for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
-    return cacheAndReturn({ url: current, status: response.status, text: new TextDecoder().decode(bytes), contentType });
+    return cacheAndReturn({
+      url: current,
+      status: response.status,
+      text: new TextDecoder().decode(bytes),
+      contentType,
+      truncated,
+    });
   }
   throw new Error("Could not safely resolve the company website URL.");
 }
@@ -361,6 +377,9 @@ export async function discoverPublicContacts(input: PublicDiscoveryInput): Promi
   let robots: string;
   try {
     const robotResponse = await safeFetchText(new URL("/robots.txt", home));
+    if (robotResponse.truncated) {
+      throw new Error("robots.txt exceeded the safe read limit; crawling was stopped to avoid missing access rules.");
+    }
     if (robotResponse.status === 404 || robotResponse.status === 410) robots = "";
     else if (robotResponse.status !== 200) {
       throw new Error("robots.txt could not be checked safely; crawling was stopped.");
@@ -402,6 +421,7 @@ export async function discoverPublicContacts(input: PublicDiscoveryInput): Promi
     }
     if (page.status !== 200 || !page.text) continue;
     pagesVisited.push(page.url.href);
+    if (page.truncated) notes.push(`Read only the first ${Math.round(MAX_PAGE_BYTES / 1000)} KB of ${page.url.pathname} because the page was larger than the extraction cap.`);
     const visible = htmlToText(page.text);
     const visibleLower = visible.toLowerCase();
     const pageMatchesName = nameLower.length > 0 && visibleLower.includes(nameLower);
