@@ -22,6 +22,20 @@ const emptyForm = { name:"", title:"", company:"", domain:"", industry:"", city:
 const newId = () => typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2);
 const cleanUrl = (value:string) => value.trim().replace(/\/$/, "");
 const isLinkedInUrl = (value:string) => /^https?:\/\/(www\.)?linkedin\.com\/(in|pub)\/[a-z0-9_%.-]+\/?$/i.test(value.trim());
+const inferNameFromLinkedInUrl = (value:string) => {
+  try {
+    const url = new URL(value.trim());
+    if (!/(^|\.)linkedin\.com$/i.test(url.hostname)) return "";
+    const slug = url.pathname.split("/").filter(Boolean)[1] ?? "";
+    const cleaned = slug.replace(/-[a-z0-9]{7,}$/i, suffix => /\d/.test(suffix) ? "" : suffix);
+    const parts = cleaned.replace(/[-_.]+/g, " ").replace(/[^a-zA-Z\s']/g, " ")
+      .split(/\s+/).filter(Boolean);
+    if (parts.length < 2 || parts.length > 7) return "";
+    return parts.map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()).join(" ");
+  } catch {
+    return "";
+  }
+};
 
 export default function Home() {
   const [leads,setLeads] = useState<Lead[]>(DEMO);
@@ -246,11 +260,11 @@ export default function Home() {
       </div>
       <form onSubmit={runLookup}>
         <div className="lookup-row">
-          <input className="field" value={profileUrl} onChange={e=>setProfileUrl(e.target.value)} placeholder="https://www.linkedin.com/in/username/" aria-label="LinkedIn profile URL"/>
+          <input className="field" value={profileUrl} onChange={e=>{const next=e.target.value;const oldGuess=inferNameFromLinkedInUrl(profileUrl);setProfileUrl(next);if(!fullName.trim()||fullName===oldGuess)setFullName(inferNameFromLinkedInUrl(next));}} placeholder="https://www.linkedin.com/in/username/" aria-label="LinkedIn profile URL"/>
           <button className="btn" type="submit" disabled={lookupLoading || bulkLoading}><Search size={16}/> {lookupLoading ? "Searching…" : "Find contacts"}</button>
         </div>
         <div className="grid-form lookup-inputs">
-          <input className="field" value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="Person's full name (helps match)" aria-label="Person full name"/>
+          <input className="field" value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="Person's full name (auto-suggested from URL; edit if needed)" aria-label="Person full name"/>
           <input className="field" value={companyName} onChange={e=>setCompanyName(e.target.value)} placeholder="Company name (optional)" aria-label="Company name"/>
           <input className="field" value={companyDomain} onChange={e=>setCompanyDomain(e.target.value)} placeholder="Official company domain (example.com)" aria-label="Company domain"/>
         </div>
