@@ -117,6 +117,7 @@ export default function Home() {
         status?: string; message?: string;
         lead?: { fullName?:string; company?:string; title?:string; email?:string; phone?:string; emailSource?:string; phoneSource?:string };
         results?: LookupResult[]; notes?: string[]; pagesVisited?: string[];
+        usage?: { publicPagesChecked?: number; searxngConfigured?: boolean; searxngQueriesRun?: number; paidFallbackEnabled?: boolean };
       };
       if (!response.ok) {
         setLookupNotice(result.message || "Contact lookup is unavailable. Check the provider setup.");
@@ -281,7 +282,7 @@ export default function Home() {
           {item.evidence && <p className="evidence-text">{item.evidence}</p>}
         </article>)}</div>
       </section>}
-      {(lookupNotes.length > 0 || pagesVisited.length > 0) && <details className="lookup-details">
+      {(lookupNotes.length > 0 || pagesVisited.length > 0) && <details open={lookupResults.length === 0 && lookupNotes.length > 0} className="lookup-details">
         <summary>Lookup notes ({pagesVisited.length} pages checked)</summary>
         {pagesVisited.length > 0 && <p className="section-subtitle">Pages checked: {pagesVisited.map((page,index)=><span key={page}>{index ? ", " : ""}<a href={page} target="_blank" rel="noreferrer">{new URL(page).pathname || "/"}</a></span>)}</p>}
         {lookupNotes.map((note,index)=><p className="section-subtitle" key={index}>{note}</p>)}
