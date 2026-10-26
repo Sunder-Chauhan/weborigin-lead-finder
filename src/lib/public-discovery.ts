@@ -600,6 +600,7 @@ export async function discoverContactsFromPublicPages(input: {
       }
       const page = await safeFetchText(requested);
       if (page.status !== 200 || !page.text) continue;
+      if (page.truncated) notes.push(`Read only the first ${Math.round(MAX_PAGE_BYTES / 1000)} KB of ${page.url.pathname} because the page was larger than the extraction cap.`);
       const visible = htmlToText(page.text);
       const visibleLower = visible.toLowerCase().replace(/\s+/g, " ");
       if (!visibleLower.includes(normalizedName)) continue;
