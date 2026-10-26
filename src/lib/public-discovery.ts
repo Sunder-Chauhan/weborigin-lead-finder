@@ -131,6 +131,35 @@ export function hasPhoneLabelNear(text: string, candidate: string): boolean {
   return PHONE_CONTEXT_RE.test(nearby);
 }
 
+export function isContactNearName(text: string, fullName: string, contactValue: string, maxGap = 360): boolean {
+  const normalizedText = text.toLowerCase().replace(/\s+/g, " ");
+  const normalizedName = fullName.toLowerCase().replace(/\s+/g, " ").trim();
+  const normalizedContact = contactValue.toLowerCase().trim();
+  if (!normalizedName || !normalizedContact) return false;
+  const contactPositions: number[] = [];
+  let cursor = 0;
+  while (cursor < normalizedText.length) {
+    const found = normalizedText.indexOf(normalizedContact, cursor);
+    if (found < 0) break;
+    contactPositions.push(found);
+    cursor = found + normalizedContact.length;
+  }
+  if (!contactPositions.length) return false;
+  let nameCursor = 0;
+  while (nameCursor < normalizedText.length) {
+    const nameIndex = normalizedText.indexOf(normalizedName, nameCursor);
+    if (nameIndex < 0) break;
+    const nameEnd = nameIndex + normalizedName.length;
+    if (contactPositions.some((contactIndex) =>
+      contactIndex >= nameIndex
+        ? contactIndex - nameEnd <= maxGap
+        : nameIndex - (contactIndex + normalizedContact.length) <= maxGap
+    )) return true;
+    nameCursor = nameIndex + normalizedName.length;
+  }
+  return false;
+}
+
 function safePhone(value: string): string | null {
   return normalizePublicPhone(value);
 }
@@ -556,6 +585,10 @@ export async function discoverContactsFromPublicPages(input: {
     try {
       const robotsResponse = await safeFetchText(new URL("/robots.txt", requested));
       let robots = "";
+      if (robotsResponse.truncated) {
+        notes.push(`Skipped a search-result host because robots.txt exceeded the safe read limit: ${host}`);
+        continue;
+      }
       if (robotsResponse.status === 200) robots = robotsResponse.text;
       else if (robotsResponse.status !== 404 && robotsResponse.status !== 410) {
         notes.push(`Skipped a search-result host because robots.txt could not be checked: ${host}`);
@@ -571,6 +604,7 @@ export async function discoverContactsFromPublicPages(input: {
       const visibleLower = visible.toLowerCase().replace(/\s+/g, " ");
       if (!visibleLower.includes(normalizedName)) continue;
       pagesVisited.push(page.url.href);
+      if (page.truncated) notes.push(`Read only the first ${Math.round(MAX_PAGE_BYTES / 1000)} KB of ${page.url.pathname} because the page was larger than the extraction cap.`);
 
       const pageHost = page.url.hostname.toLowerCase().replace(/^www\./, "");
       const targetDomain = (input.companyDomain ?? "").trim().toLowerCase()
@@ -591,6 +625,8 @@ export async function discoverContactsFromPublicPages(input: {
         const firstLast = fullName.toLowerCase().split(/\s+/).filter(Boolean);
         const normalizedLocal = local.replace(/[._+-]/g, " ");
         const personNamed = firstLast.length >= 2 && normalizedLocal.includes(firstLast[0]) && normalizedLocal.includes(firstLast[firstLast.length - 1]);
+        const nameNearEmail = isContactNearName(visible, fullName, email, 500);
+        if (!companyPage && !personNamed && !nameNearEmail) continue;
         contacts.push({
           type: "email",
           value: email,
@@ -614,6 +650,7 @@ export async function discoverContactsFromPublicPages(input: {
         const rawPhone = candidate.value;
         const phone = safePhone(rawPhone);
         if (!phone || (!candidate.explicit && !hasPhoneLabelNear(visible, rawPhone))) continue;
+        if (!companyPage && !isContactNearName(visible, fullName, phone, 500)) continue;
         const digits = phone.replace(/\D/g, "");
         if (phonesSeen.has(digits)) continue;
         phonesSeen.add(digits);
