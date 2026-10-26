@@ -120,7 +120,7 @@ export function normalizePublicPhone(value: string): string | null {
   return asText(candidate);
 }
 
-const PHONE_CONTEXT_RE = /\b(?:phone|telephone|tel\.?|mobile|cell(?:ular)?|call(?:\s+us)?|contact(?:\s+us)?|whatsapp|fax|helpline|customer\s+care|reach\s+us|direct\s+line|phone\s+number|mobile\s+number)\b/i;
+const PHONE_CONTEXT_RE = /\b(?:phone(?:\s+number)?|telephone|tel\.?|mobile(?:\s+number)?|cell(?:ular)?|call\s+(?:us|now)|contact\s+(?:us|details|number|information)|whatsapp|fax|helpline|customer\s+care|reach\s+us|direct\s+line)\b/i;
 
 export function hasPhoneLabelNear(text: string, candidate: string): boolean {
   const dateLike = /^\s*\d{1,2}[-/.]\d{1,2}[-/.]\d{4}(?:\s+\d{1,2}(?::\d{2}){0,2})?\s*$/.test(candidate);
