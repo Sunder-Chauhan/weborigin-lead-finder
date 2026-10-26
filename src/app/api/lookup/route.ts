@@ -256,7 +256,7 @@ export async function POST(request: Request) {
         : searxngUnavailable
           ? "SearXNG is configured but did not return usable search results. Check that Docker/SearXNG is running and reachable at SEARXNG_BASE_URL."
           : !companyDomain && searxngConfigured && searxngQueriesRun > 0
-            ? "SearXNG search ran but found no usable contact snippets. Try supplying the person's official company domain to also search company pages."
+            ? `SearXNG ran ${searxngQueriesRun} public-web searches and checked ${pagesVisited.length} accessible source pages, but found no usable contact details. Try supplying the person's official company domain as well.`
             : "No usable contact details were found. Check lookup notes for skipped pages or search configuration, or enable the optional provider fallback if appropriate.";
 
   return NextResponse.json({
