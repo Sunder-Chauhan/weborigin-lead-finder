@@ -441,7 +441,7 @@ export async function discoverPublicContacts(input: PublicDiscoveryInput): Promi
 
   for (const pageUrl of urls) {
     if (!isAllowedByRobots(robots, pageUrl.pathname)) continue;
-    let page: { url: URL; status: number; text: string; contentType: string };
+    let page: PublicPageResponse;
     try {
       page = pageUrl.href === homeResponse.url.href ? homeResponse : await safeFetchText(pageUrl);
     } catch (error) {
