@@ -92,6 +92,7 @@ export async function discoverSearchIndexedContacts(input: {
   const contacts: PublicContact[] = [];
   const notes: string[] = [];
   const seen = new Set<string>();
+  let queriesRun = 0;
 
   for (const query of queries) {
     const endpoint = new URL("search", base);
@@ -120,6 +121,7 @@ export async function discoverSearchIndexedContacts(input: {
       notes.push("SearXNG did not return JSON. Ensure JSON format is enabled on the configured instance.");
       break;
     }
+    queriesRun++;
     const results = Array.isArray(body.results) ? body.results.slice(0, 8) : [];
     for (const result of results) {
       const sourceUrl = resultUrl(result.url);
@@ -173,5 +175,5 @@ export async function discoverSearchIndexedContacts(input: {
   }
 
   if (contacts.length) notes.push("Search-engine snippets are leads, not independent verification. Open the source page before relying on a contact.");
-  return { contacts, notes, queriesRun: queries.length };
+  return { contacts, notes, queriesRun };
 }
