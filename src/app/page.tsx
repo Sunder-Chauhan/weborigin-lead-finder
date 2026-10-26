@@ -134,9 +134,9 @@ export default function Home() {
         domain:companyDomain || l.domain,
         title:found.title || l.title,
         email:(l.email && !l.emailSource) ? l.email : (found.email || l.email),
-        phone:(l.phone && !l.phoneSource) ? l.phone : (found.phone || l.phone),
+        phone:(l.phone && !l.phoneSource) ? l.phone : (found.phone || (l.phoneSource && /SearXNG|Public search-result page/i.test(l.phoneSource) ? "" : l.phone)),
         emailSource:found.emailSource || l.emailSource,
-        phoneSource:found.phoneSource || l.phoneSource,
+        phoneSource:found.phoneSource || (l.phoneSource && /SearXNG|Public search-result page/i.test(l.phoneSource) ? "" : l.phoneSource),
         source:(found.email || found.phone) ? "Public-source / enrichment lookup" : l.source
       }) : l));
       setLookupNotice(result.message || "Lookup completed.");
@@ -195,9 +195,9 @@ export default function Home() {
             company:found.company || existing.company,
             title:found.title || existing.title,
             email:(existing.email && !existing.emailSource) ? existing.email : (found.email || existing.email),
-            phone:(existing.phone && !existing.phoneSource) ? existing.phone : (found.phone || existing.phone),
+            phone:(existing.phone && !existing.phoneSource) ? existing.phone : (found.phone || (existing.phoneSource && /SearXNG|Public search-result page/i.test(existing.phoneSource) ? "" : existing.phone)),
             emailSource:found.emailSource || existing.emailSource,
-            phoneSource:found.phoneSource || existing.phoneSource,
+            phoneSource:found.phoneSource || (existing.phoneSource && /SearXNG|Public search-result page/i.test(existing.phoneSource) ? "" : existing.phoneSource),
             source:(found.email || found.phone) ? "Public-source / enrichment lookup" : existing.source
           }) : existing));
         } catch {
