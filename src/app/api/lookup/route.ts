@@ -170,6 +170,8 @@ export async function POST(request: Request) {
   const contacts: PublicContact[] = [];
   const pagesVisited: string[] = [];
   const notes: string[] = [];
+  const searxngConfigured = Boolean(process.env.SEARXNG_BASE_URL?.trim());
+  let searxngQueriesRun = 0;
   if (slugName) notes.push(`Person name was heuristically derived from the LinkedIn URL slug as "${slugName}". Confirm the identity on the source page before outreach.`);
   let resolvedFullName = fullName;
   let resolvedCompany = company;
@@ -193,7 +195,7 @@ export async function POST(request: Request) {
 
   // Optional broader public-web search through an operator-configured, self-hosted SearXNG instance.
   // Snippet matches are lower-confidence than addresses extracted from the official company site.
-  if (process.env.SEARXNG_BASE_URL?.trim()) {
+  if (searxngConfigured) {
     const searchResult = await discoverSearchIndexedContacts({
       fullName,
       companyName: company,
@@ -201,7 +203,8 @@ export async function POST(request: Request) {
     });
     contacts.push(...searchResult.contacts);
     notes.push(...searchResult.notes);
-    if (searchResult.queriesRun) notes.push(`SearXNG public-web queries run: ${searchResult.queriesRun}.`);
+    searxngQueriesRun = searchResult.queriesRun;
+    if (searchResult.queriesRun) notes.push(`SearXNG public-web searches successfully queried: ${searchResult.queriesRun}.`);
   }
 
   // Paid/provider data is an explicit opt-in. Merely having keys in .env.local
@@ -238,11 +241,18 @@ export async function POST(request: Request) {
   const phone = pickLeadContact(finalContacts, "phone");
   const hasPersonalDirectPhone = finalContacts.some((contact) => contact.type === "phone" && contact.label === "direct");
   const status = email && hasPersonalDirectPhone ? "complete" : finalContacts.length ? "partial" : "not_found";
+  const searxngUnavailable = notes.some((note) => /SearXNG could not be reached|SearXNG returned HTTP|did not return JSON/i.test(note));
   const message = status === "complete"
     ? "A published email and a person-specific phone source were found. Review the source evidence before outreach."
     : status === "partial"
       ? "Some contact data was found, but WebOrigin could not confirm both a professional email and a direct personal mobile. Check each source and evidence label."
-      : "No usable contact details were found in the checked public sources. Add a company domain or enable the optional provider fallback if appropriate.";
+      : !companyDomain && !searxngConfigured
+        ? "No contact search source ran: no company domain was supplied and SearXNG is not configured. Add the company domain or configure the included local SearXNG service."
+        : searxngUnavailable
+          ? "SearXNG is configured but did not return usable search results. Check that Docker/SearXNG is running and reachable at SEARXNG_BASE_URL."
+          : !companyDomain && searxngConfigured && searxngQueriesRun > 0
+            ? "SearXNG search ran but found no usable contact snippets. Try supplying the person's official company domain to also search company pages."
+            : "No usable contact details were found. Check lookup notes for skipped pages or search configuration, or enable the optional provider fallback if appropriate.";
 
   return NextResponse.json({
     status,
@@ -260,6 +270,6 @@ export async function POST(request: Request) {
     results: finalContacts,
     pagesVisited,
     notes,
-    usage: { publicPagesChecked: pagesVisited.length, paidFallbackEnabled: tombaEnabled },
+    usage: { publicPagesChecked: pagesVisited.length, paidFallbackEnabled: tombaEnabled, searxngConfigured, searxngQueriesRun },
   });
 }
