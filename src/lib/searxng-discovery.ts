@@ -1,4 +1,4 @@
-import { discoverContactsFromPublicPages, hasPhoneLabelNear, normalizePublicPhone, type PublicContact } from "@/lib/public-discovery";
+import { discoverContactsFromPublicPages, hasPhoneLabelNear, isContactNearName, normalizePublicPhone, type PublicContact } from "@/lib/public-discovery";
 
 type SearchResult = {
   url?: unknown;
@@ -30,6 +30,24 @@ function resultUrl(value: unknown): string | null {
     return url.href;
   } catch {
     return null;
+  }
+}
+
+function isLikelyLegalDocument(sourceUrl: string, text: string): boolean {
+  try {
+    const url = new URL(sourceUrl);
+    const host = url.hostname.toLowerCase().replace(/^www\./, "");
+    const path = url.pathname.toLowerCase();
+    const isKnownCaseLawHost =
+      host === "indiankanoon.org" || host.endsWith(".indiankanoon.org") ||
+      host === "casemine.com" || host.endsWith(".casemine.com") ||
+      host === "law.justia.com" || host === "lawyerservices.in";
+    const casePath = /\/doc\/\d+|judg(?:e)?ment|case[-_/]?law|civil[-_/]appeal|criminal[-_/]appeal/.test(path);
+    const legalSignals = (text.match(/\b(?:neutral citation|citation no\.?|civil appeal|criminal appeal|petitioner|respondent|plaintiff|defendant|judgment|judgement|writ petition|high court|supreme court|tribunal|court of|execution court)\b/gi) ?? []).length;
+    const contactSignals = (text.match(/\b(?:e-?mail|phone|mobile|telephone|contact us|contact details|call us|whatsapp|helpline|staff directory|team member|business card)\b/gi) ?? []).length;
+    return (isKnownCaseLawHost && casePath) || (casePath && legalSignals >= 3 && contactSignals === 0);
+  } catch {
+    return false;
   }
 }
 
@@ -95,6 +113,7 @@ export async function discoverSearchIndexedContacts(input: {
   const seen = new Set<string>();
   const sourceUrls: string[] = [];
   let queriesRun = 0;
+  let legalResultsSkipped = 0;
 
   for (const query of queries) {
     const endpoint = new URL("search", base);
@@ -131,6 +150,10 @@ export async function discoverSearchIndexedContacts(input: {
       const title = asString(result.title);
       const snippet = asString(result.content).slice(0, 1600);
       const evidenceText = `${title} ${snippet}`;
+      if (isLikelyLegalDocument(sourceUrl, evidenceText)) {
+        legalResultsSkipped++;
+        continue;
+      }
       const searchableText = evidenceText.toLowerCase();
       const relevant = matchesCompanySource(sourceUrl, companyDomain) ||
         (fullName.length > 0 && searchableText.includes(fullName.toLowerCase())) ||
@@ -141,6 +164,11 @@ export async function discoverSearchIndexedContacts(input: {
       for (const rawEmail of emails) {
         const email = normalizeEmail(rawEmail);
         if (!email || !isCompanyEmail(email, companyDomain)) continue;
+        const localParts = email.split("@")[0].toLowerCase().split(/[._+-]+/).filter(Boolean);
+        const nameParts = fullName.toLowerCase().split(/\s+/).filter(Boolean);
+        const personNamed = nameParts.length >= 2 &&
+          localParts.includes(nameParts[0]) && localParts.includes(nameParts[nameParts.length - 1]);
+        if (!personNamed && !isContactNearName(evidenceText, fullName, email, 240)) continue;
         const key = `email:${email}`;
         if (seen.has(key)) continue;
         seen.add(key);
@@ -161,7 +189,8 @@ export async function discoverSearchIndexedContacts(input: {
         const phone = normalizePhone(rawPhone);
         // Search snippets often contain dates and legal/case reference numbers.
         // Only accept a visible-text number when nearby text identifies it as a phone.
-        if (!phone || !hasPhoneLabelNear(evidenceText, rawPhone)) continue;
+        if (!phone || !hasPhoneLabelNear(evidenceText, rawPhone) ||
+            !isContactNearName(evidenceText, fullName, rawPhone, 240)) continue;
         const key = `phone:${phone.replace(/\D/g, "")}`;
         if (seen.has(key)) continue;
         seen.add(key);
@@ -179,6 +208,7 @@ export async function discoverSearchIndexedContacts(input: {
     }
   }
 
+  if (legalResultsSkipped) notes.push(`Skipped ${legalResultsSkipped} likely legal-case result(s) because case citations and judgment text are poor contact evidence.`);
   if (contacts.length) notes.push("Search-engine snippets are leads, not independent verification. Open the source page before relying on a contact.");
 
   // Snippets often omit phone/email fields. Open only a small number of relevant
