@@ -5,6 +5,21 @@ import { discoverSearchIndexedContacts } from "@/lib/searxng-discovery";
 type JsonObject = Record<string, unknown>;
 const asString = (value: unknown): string => typeof value === "string" ? value.trim() : "";
 
+function inferNameFromProfileSlug(linkedinUrl: string): string {
+  try {
+    const url = new URL(linkedinUrl);
+    const slug = url.pathname.split("/").filter(Boolean)[1] ?? "";
+    // LinkedIn vanity slugs sometimes end with an opaque alphanumeric identifier.
+    const cleaned = slug.replace(/-[a-z0-9]{7,}$/i, (suffix) => /\d/.test(suffix) ? "" : suffix);
+    const tokens = cleaned.replace(/[-_.]+/g, " ").replace(/[^a-zA-Z\s']/g, " ")
+      .split(/\s+/).filter(Boolean);
+    if (tokens.length < 2 || tokens.length > 7) return "";
+    return tokens.map((token) => token.charAt(0).toUpperCase() + token.slice(1).toLowerCase()).join(" ");
+  } catch {
+    return "";
+  }
+}
+
 function isSupportedLinkedInProfile(value: unknown): value is string {
   if (typeof value !== "string" || value.length > 500) return false;
   try {
@@ -135,7 +150,9 @@ export async function POST(request: Request) {
     }, { status: 400 });
   }
 
-  const fullName = asString(body.fullName).slice(0, 160);
+  const suppliedFullName = asString(body.fullName).slice(0, 160);
+  const slugName = suppliedFullName ? "" : inferNameFromProfileSlug(linkedinUrl);
+  const fullName = suppliedFullName || slugName;
   const company = asString(body.company).slice(0, 200);
   const companyDomain = asString(body.companyDomain).slice(0, 500);
   const includeEmailGuess = body.includeEmailGuess === true;
@@ -153,6 +170,7 @@ export async function POST(request: Request) {
   const contacts: PublicContact[] = [];
   const pagesVisited: string[] = [];
   const notes: string[] = [];
+  if (slugName) notes.push(`Person name was heuristically derived from the LinkedIn URL slug as "${slugName}". Confirm the identity on the source page before outreach.`);
   let resolvedFullName = fullName;
   let resolvedCompany = company;
   let resolvedTitle = "";
