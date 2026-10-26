@@ -65,23 +65,23 @@ export async function discoverSearchIndexedContacts(input: {
   companyDomain?: string;
 }): Promise<{ contacts: PublicContact[]; notes: string[]; queriesRun: number; pagesVisited: string[] }> {
   const configured = process.env.SEARXNG_BASE_URL?.trim();
-  if (!configured) return { contacts: [], notes: [], queriesRun: 0 };
+  if (!configured) return { contacts: [], notes: [], queriesRun: 0, pagesVisited: [] };
 
   let base: URL;
   try {
     base = new URL(configured.endsWith("/") ? configured : configured + "/");
   } catch {
-    return { contacts: [], notes: ["SEARXNG_BASE_URL is configured but is not a valid URL."], queriesRun: 0 };
+    return { contacts: [], notes: ["SEARXNG_BASE_URL is configured but is not a valid URL."], queriesRun: 0, pagesVisited: [] };
   }
   if (!["http:", "https:"].includes(base.protocol) || base.username || base.password) {
-    return { contacts: [], notes: ["SEARXNG_BASE_URL must be an HTTP/HTTPS URL without embedded credentials."], queriesRun: 0 };
+    return { contacts: [], notes: ["SEARXNG_BASE_URL must be an HTTP/HTTPS URL without embedded credentials."], queriesRun: 0, pagesVisited: [] };
   }
 
   const fullName = (input.fullName ?? "").trim();
   const companyName = (input.companyName ?? "").trim();
   const companyDomain = (input.companyDomain ?? "").trim();
   if (!fullName && !companyDomain && !companyName) {
-    return { contacts: [], notes: ["SearXNG discovery needs a person name, company name, or company domain."], queriesRun: 0 };
+    return { contacts: [], notes: ["SearXNG discovery needs a person name, company name, or company domain."], queriesRun: 0, pagesVisited: [] };
   }
 
   const context = [fullName ? `"${fullName}"` : "", companyName ? `"${companyName}"` : "", companyDomain ? `site:${companyDomain.replace(/^https?:\/\//, "").split(/[/:?#]/)[0]}` : ""]
