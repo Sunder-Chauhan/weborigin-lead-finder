@@ -1,4 +1,4 @@
-import { discoverContactsFromPublicPages, type PublicContact } from "@/lib/public-discovery";
+import { discoverContactsFromPublicPages, hasPhoneLabelNear, normalizePublicPhone, type PublicContact } from "@/lib/public-discovery";
 
 type SearchResult = {
   url?: unknown;
@@ -19,11 +19,7 @@ function normalizeEmail(raw: string): string | null {
 }
 
 function normalizePhone(raw: string): string | null {
-  const value = raw.trim().replace(/[;,.)]+$/, "");
-  const digits = value.replace(/\D/g, "");
-  if (digits.length < 8 || digits.length > 15) return null;
-  if (!value.startsWith("+") && !/[()\s.-]/.test(value)) return null;
-  return value;
+  return normalizePublicPhone(raw);
 }
 
 function resultUrl(value: unknown): string | null {
@@ -163,7 +159,9 @@ export async function discoverSearchIndexedContacts(input: {
       const phoneMatches = evidenceText.match(/(?:\+\s*\d{1,3}[\s().-]*)?(?:\(?\d{2,5}\)?[\s.-]+)?\d[\d\s().-]{5,}\d/g) ?? [];
       for (const rawPhone of phoneMatches) {
         const phone = normalizePhone(rawPhone);
-        if (!phone) continue;
+        // Search snippets often contain dates and legal/case reference numbers.
+        // Only accept a visible-text number when nearby text identifies it as a phone.
+        if (!phone || !hasPhoneLabelNear(evidenceText, rawPhone)) continue;
         const key = `phone:${phone.replace(/\D/g, "")}`;
         if (seen.has(key)) continue;
         seen.add(key);
