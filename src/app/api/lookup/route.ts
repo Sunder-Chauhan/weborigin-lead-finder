@@ -196,15 +196,20 @@ export async function POST(request: Request) {
   // Optional broader public-web search through an operator-configured, self-hosted SearXNG instance.
   // Snippet matches are lower-confidence than addresses extracted from the official company site.
   if (searxngConfigured) {
-    const searchResult = await discoverSearchIndexedContacts({
-      fullName,
-      companyName: company,
-      companyDomain,
-    });
-    contacts.push(...searchResult.contacts);
-    notes.push(...searchResult.notes);
-    searxngQueriesRun = searchResult.queriesRun;
-    if (searchResult.queriesRun) notes.push(`SearXNG public-web searches successfully queried: ${searchResult.queriesRun}.`);
+    try {
+      const searchResult = await discoverSearchIndexedContacts({
+        fullName,
+        companyName: company,
+        companyDomain,
+      });
+      contacts.push(...searchResult.contacts);
+      pagesVisited.push(...searchResult.pagesVisited);
+      notes.push(...searchResult.notes);
+      searxngQueriesRun = searchResult.queriesRun;
+      if (searchResult.queriesRun) notes.push(`SearXNG public-web searches successfully queried: ${searchResult.queriesRun}.`);
+    } catch (error) {
+      notes.push(error instanceof Error ? `SearXNG discovery failed: ${error.message}` : "SearXNG discovery failed.");
+    }
   }
 
   // Paid/provider data is an explicit opt-in. Merely having keys in .env.local
